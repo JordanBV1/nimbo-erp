@@ -23,7 +23,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 
 // server.ts
-var import_config = require("dotenv/config");
+var import_dotenv = __toESM(require("dotenv"), 1);
 var import_express = __toESM(require("express"), 1);
 var import_path2 = __toESM(require("path"), 1);
 var import_vite = require("vite");
@@ -1034,6 +1034,7 @@ var db = {
 };
 
 // server.ts
+import_dotenv.default.config();
 var PORT = parseInt(process.env.PORT || "3000", 10);
 var JWT_SECRET = process.env.JWT_SECRET || (() => {
   if (process.env.NODE_ENV === "production") {
