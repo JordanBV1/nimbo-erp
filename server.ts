@@ -2,7 +2,7 @@ import dotenv from "dotenv";
 dotenv.config();
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
+
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import rateLimit from "express-rate-limit";
@@ -1371,6 +1371,7 @@ async function startServer() {
   // --- Vite / Static Serving ---
 
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -1392,11 +1393,3 @@ async function startServer() {
 }
 
 startServer();
-
-// Global uncaught exception handler
-process.on("uncaughtException", (err) => {
-  console.error("UNCAUGHT EXCEPTION", err);
-});
-process.on("unhandledRejection", (reason) => {
-  console.error("UNHANDLED REJECTION", reason);
-});
