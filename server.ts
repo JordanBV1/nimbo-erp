@@ -212,7 +212,7 @@ async function startServer() {
     }
 
     const savedPassword = user.password || "123456";
-    const isMatch = savedPassword.startsWith("$2a$")
+    const isMatch = /^\$2[abxy]\$/.test(savedPassword)
       ? await bcrypt.compare(password, savedPassword)
       : password === savedPassword;
 

@@ -1182,7 +1182,7 @@ async function startServer() {
       return res.status(401).json({ error: "Credenciales incorrectas" });
     }
     const savedPassword = user.password || "123456";
-    const isMatch = savedPassword.startsWith("$2a$") ? await import_bcryptjs2.default.compare(password, savedPassword) : password === savedPassword;
+    const isMatch = /^\$2[abxy]\$/.test(savedPassword) ? await import_bcryptjs2.default.compare(password, savedPassword) : password === savedPassword;
     if (!isMatch) {
       return res.status(401).json({ error: "Credenciales incorrectas" });
     }
