@@ -1392,3 +1392,11 @@ async function startServer() {
 }
 
 startServer();
+
+// Global uncaught exception handler
+process.on("uncaughtException", (err) => {
+  console.error("UNCAUGHT EXCEPTION", err);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error("UNHANDLED REJECTION", reason);
+});
