@@ -1,0 +1,8 @@
+{
+  "name": "Nimbo ERP",
+  "description": "ERP y POS modular adaptado a la economía de Cuba, con soporte multi-moneda (CUP/MLC), inventario, compras, producción, finanzas, recursos humanos y reportes ONAT.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
