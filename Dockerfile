@@ -4,9 +4,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts=false
 COPY . .
-RUN mkdir -p /app/db-data
 EXPOSE 3000
 ENV NODE_ENV=production
-ENV JWT_SECRET=REDACTED_ROTATE_ME
+ENV JWT_SECRET=test123
 ENV PORT=3000
-CMD node entrypoint.js
+CMD node -e "require('./dist/server.cjs')"
