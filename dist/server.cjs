@@ -1139,20 +1139,6 @@ async function startServer() {
   }));
   app.use(import_express.default.json({ limit: "10mb" }));
   app.use((0, import_cookie_parser.default)());
-  if (process.env.SITE_USERNAME && process.env.SITE_PASSWORD) {
-    app.use((req, res, next) => {
-      const auth = req.headers.authorization;
-      if (auth && auth.startsWith("Basic ")) {
-        const decoded = Buffer.from(auth.slice(6), "base64").toString();
-        const [user, pass] = decoded.split(":");
-        if (user === process.env.SITE_USERNAME && pass === process.env.SITE_PASSWORD) {
-          return next();
-        }
-      }
-      res.setHeader("WWW-Authenticate", 'Basic realm="Nimbo ERP"');
-      res.status(401).send("Acceso restringido");
-    });
-  }
   const authLimiter = (0, import_express_rate_limit.default)({
     windowMs: 15 * 60 * 1e3,
     max: 20,

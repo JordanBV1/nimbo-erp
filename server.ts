@@ -157,22 +157,6 @@ async function startServer() {
   app.use(express.json({ limit: "10mb" }));
   app.use(cookieParser());
 
-  // Basic Auth gate (optional, enabled by setting SITE_USERNAME & SITE_PASSWORD)
-  if (process.env.SITE_USERNAME && process.env.SITE_PASSWORD) {
-    app.use((req, res, next) => {
-      const auth = req.headers.authorization;
-      if (auth && auth.startsWith("Basic ")) {
-        const decoded = Buffer.from(auth.slice(6), "base64").toString();
-        const [user, pass] = decoded.split(":");
-        if (user === process.env.SITE_USERNAME && pass === process.env.SITE_PASSWORD) {
-          return next();
-        }
-      }
-      res.setHeader("WWW-Authenticate", 'Basic realm="Nimbo ERP"');
-      res.status(401).send("Acceso restringido");
-    });
-  }
-
   // Rate limiting
   const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
