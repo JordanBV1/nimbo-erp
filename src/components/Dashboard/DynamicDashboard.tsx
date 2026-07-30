@@ -44,6 +44,7 @@ interface DashboardProps {
     totalEmployees: number;
   };
   chartData: any[];
+  monthlyChartData: any[];
   topProducts: any[];
   onNavigateTo: (module: string) => void;
   subscription?: {
@@ -57,6 +58,7 @@ export default function DynamicDashboard({
   businessType,
   stats,
   chartData,
+  monthlyChartData,
   topProducts,
   onNavigateTo,
   subscription
@@ -318,7 +320,7 @@ export default function DynamicDashboard({
       </div>
 
       {/* 3. Recharts Graphics section (Sales trend and Category distribution) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Sales trend over time */}
         <div className="bg-[#121214] border border-slate-800 rounded-3xl p-6 shadow-sm lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between">
@@ -343,6 +345,30 @@ export default function DynamicDashboard({
                 />
                 <Line type="monotone" dataKey="monto" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
               </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Monthly CUP vs USD comparison */}
+        <div className="bg-[#121214] border border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
+          <div>
+            <h3 className="font-bold text-white tracking-tight font-display">Comparativa Mensual CUP vs USD</h3>
+            <p className="text-xs text-slate-400">Últimos 6 meses</p>
+          </div>
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={monthlyChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
+                <XAxis dataKey="month" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
+                <Tooltip
+                  contentStyle={{ background: "#1e293b", borderRadius: "12px", border: "1px solid #334155", color: "#f8fafc" }}
+                  labelStyle={{ fontWeight: "bold", marginBottom: "4px" }}
+                />
+                <Legend wrapperStyle={{ fontSize: "11px", color: "#94a3b8" }} />
+                <Bar dataKey="cup" fill="#3b82f6" name="CUP" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="usd" fill="#10b981" name="USD" radius={[4, 4, 0, 0]} />
+              </BarChart>
             </ResponsiveContainer>
           </div>
         </div>

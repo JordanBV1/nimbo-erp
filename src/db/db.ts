@@ -329,11 +329,13 @@ export function initializeDatabase() {
   insert("system_settings", { id: generateId(), key: "exchange_rate_usd", value: "120" });
   insert("system_settings", { id: generateId(), key: "business_name", value: "Nimbo ERP S.R.L." });
   insert("system_settings", { id: generateId(), key: "business_address", value: "La Habana, Cuba" });
+  insert("system_settings", { id: generateId(), key: "transfermovil_phone", value: "+53 51234567" });
+  insert("system_settings", { id: generateId(), key: "enzona_user", value: "nimbo.erp" });
 
   insert("users", { id: generateId(), name: "Administrador Panadería", email: "admin@bakery.com", password: demoPass, role: Role.ADMIN, branch_id: bBakery.id, created_at: now, updated_at: now });
   insert("users", { id: generateId(), name: "Cajero Ropa", email: "cajero@ropa.com", password: demoPass, role: Role.CAJERO, branch_id: bClothing.id, created_at: now, updated_at: now });
   insert("users", { id: generateId(), name: "Gerente Ropa", email: "admin@ropa.com", password: demoPass, role: Role.GERENTE, branch_id: bClothing.id, created_at: now, updated_at: now });
-  insert("users", { id: generateId(), name: "Administrador General", email: "admin@nimbo.com", password: demoPass, role: Role.ADMIN, branch_id: bGeneral.id, created_at: now, updated_at: now });
+  insert("users", { id: generateId(), name: "Administrador General", email: "admin@nimbo.com", password: demoPass, role: Role.SUPER_ADMIN, branch_id: bGeneral.id, created_at: now, updated_at: now });
 
   const catAlimentos = insert("categories", { id: generateId(), name: "Alimentos", slug: "alimentos" });
   const catPanes = insert("categories", { id: generateId(), name: "Panes", slug: "panes", parent_id: catAlimentos.id });

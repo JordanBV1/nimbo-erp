@@ -110,6 +110,9 @@ export default function App() {
   const [exchangeRate, setExchangeRate] = useState<number>(120);
   const [subscriptionPayments, setSubscriptionPayments] = useState<any[]>([]);
   const [isLoadingPayments, setIsLoadingPayments] = useState<boolean>(false);
+  const [branches, setBranches] = useState<any[]>([]);
+  const [transfermovilPhone, setTransfermovilPhone] = useState<string>("+53 51234567");
+  const [enzonaUser, setEnzonaUser] = useState<string>("nimbo.erp");
 
   // POS / Cash Session States
   const [cashSession, setCashSession] = useState<any>(null);
@@ -234,6 +237,10 @@ export default function App() {
         setAuditLogs(confData.logs);
         const rateSetting = confData.settings.find((s: any) => s.key === "exchange_rate_usd");
         if (rateSetting) setExchangeRate(Number(rateSetting.value) || 120);
+        const phoneSetting = confData.settings.find((s: any) => s.key === "transfermovil_phone");
+        if (phoneSetting) setTransfermovilPhone(phoneSetting.value);
+        const enzonaSetting = confData.settings.find((s: any) => s.key === "enzona_user");
+        if (enzonaSetting) setEnzonaUser(enzonaSetting.value);
       }
 
       // Sessions
@@ -256,6 +263,9 @@ export default function App() {
             localStorage.setItem("nimbo_org", JSON.stringify(freshOrg));
           }
           await fetchSubscriptionPayments(parsedOrg.id);
+          // Load branches for subscription pricing
+          const resBranches = await fetch(`/api/branches?orgId=${parsedOrg.id}`);
+          if (resBranches.ok) setBranches(await resBranches.json());
         }
       }
     } catch (err) {
@@ -378,6 +388,11 @@ export default function App() {
     return diffDays > 0 ? diffDays : 0;
   };
 
+  const SUBSCRIPTION_BASE_PRICE = 5000;
+  const SUBSCRIPTION_PER_BRANCH_PRICE = 1000;
+  const getTotalSubscriptionPrice = () =>
+    SUBSCRIPTION_BASE_PRICE + Math.max(0, branches.length - 1) * SUBSCRIPTION_PER_BRANCH_PRICE;
+
   const handleRegisterPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!paymentTxId.trim()) {
@@ -394,7 +409,7 @@ export default function App() {
           platform: paymentPlatform,
           phone: paymentPhone,
           transactionId: paymentTxId,
-          amount: 1000,
+          amount: getTotalSubscriptionPrice(),
           userId: user.id
         })
       });
@@ -661,6 +676,24 @@ export default function App() {
         fecha: day.substring(5), // MM-DD
         monto: totalCUP
       };
+    });
+  };
+
+  // Monthly revenue comparison by currency
+  const getMonthlyChartData = () => {
+    const monthNames = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+    const months: { key: string; label: string }[] = [];
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      months.push({ key, label: monthNames[d.getMonth()] });
+    }
+    return months.map((m) => {
+      const monthSales = sales.filter((s) => s.status === "completed" && s.date.substring(0, 7) === m.key);
+      const cup = monthSales.reduce((sum, s) => sum + (s.grandTotalCUP || 0), 0);
+      const usd = monthSales.reduce((sum, s) => sum + (s.grandTotalUSD || 0), 0);
+      return { month: m.label, cup, usd };
     });
   };
 
@@ -1004,7 +1037,7 @@ export default function App() {
       )}
 
       {/* Collapsible Sidebar */}
-      <Sidebar currentModule={currentModule} onSelectModule={setCurrentModule} businessType={branch.businessType} />
+      <Sidebar currentModule={currentModule} onSelectModule={setCurrentModule} businessType={branch.businessType} userRole={user?.role} />
 
       {/* Workspace Area */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
@@ -1018,6 +1051,7 @@ export default function App() {
               businessType={branch.businessType}
               stats={getDashboardStats()}
               chartData={getSalesChartData()}
+              monthlyChartData={getMonthlyChartData()}
               topProducts={getTopProductsData()}
               onNavigateTo={setCurrentModule}
               subscription={{
@@ -1054,10 +1088,17 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="shrink-0 relative z-10 bg-slate-900/60 border border-slate-800 rounded-2xl p-4 text-center">
+                <div className="shrink-0 relative z-10 bg-slate-900/60 border border-slate-800 rounded-2xl p-4 text-center min-w-[160px]">
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Costo Mensual</p>
-                  <p className="text-2xl font-black text-emerald-400 font-mono mt-1">1000 CUP</p>
-                  <p className="text-[10px] text-slate-500 mt-1">Pesos Cubanos</p>
+                  <p className="text-2xl font-black text-emerald-400 font-mono mt-1">{getTotalSubscriptionPrice().toLocaleString()} CUP</p>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    {SUBSCRIPTION_BASE_PRICE.toLocaleString()} CUP base
+                    {branches.length > 1 ? (
+                      <> + {branches.length - 1} suc. × {SUBSCRIPTION_PER_BRANCH_PRICE.toLocaleString()} CUP</>
+                    ) : (
+                      <> (1 sucursal)</>
+                    )}
+                  </p>
                 </div>
               </div>
 
@@ -1077,16 +1118,16 @@ export default function App() {
                         <span>Envía el Pago por Canales Oficiales</span>
                       </div>
                       <p className="text-slate-400 text-[11px] leading-relaxed">
-                        Transfiere <strong className="text-white font-bold">1000.00 CUP</strong> usando las pasarelas cubanas:
+                        Transfiere <strong className="text-white font-bold">{getTotalSubscriptionPrice().toLocaleString()}.00 CUP</strong> usando las pasarelas cubanas:
                       </p>
                       <div className="space-y-1 pt-1 text-[11px] font-mono">
                         <div className="flex justify-between border-b border-slate-900 pb-1">
                           <span className="text-slate-500">Transfermóvil (Móvil):</span>
-                          <strong className="text-blue-400">+53 51234567</strong>
+                          <strong className="text-blue-400">{transfermovilPhone}</strong>
                         </div>
                         <div className="flex justify-between pt-1">
                           <span className="text-slate-500">Enzona (Usuario):</span>
-                          <strong className="text-blue-400">nimbo.erp</strong>
+                          <strong className="text-blue-400">{enzonaUser}</strong>
                         </div>
                       </div>
                     </div>
@@ -1714,14 +1755,58 @@ export default function App() {
           {/* INVENTORY / STOCK MODULE */}
           {currentModule === "inventario" && (
             <div className="space-y-6" id="inventory-module">
-              <div>
-                <h2 className="text-xl font-bold text-white tracking-tight flex items-center font-display">
-                  <Boxes className="h-6 w-6 text-blue-400 mr-2" />
-                  Módulo de Inventario y Almacenes
-                </h2>
-                <p className="text-xs text-slate-400 mt-1">
-                  Controla existencias físicas, realiza movimientos manuales (entradas/salidas) o transferencias inter-almacenes.
-                </p>
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div>
+                  <h2 className="text-xl font-bold text-white tracking-tight flex items-center font-display">
+                    <Boxes className="h-6 w-6 text-blue-400 mr-2" />
+                    Módulo de Inventario y Almacenes
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Controla existencias físicas, realiza movimientos manuales (entradas/salidas) o transferencias inter-almacenes.
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    const doc = new jsPDF();
+                    doc.setFont("Helvetica", "bold");
+                    doc.setFontSize(14);
+                    doc.text("NIMBO ERP - REPORTE DE INVENTARIO", 14, 20);
+                    doc.setFont("Helvetica", "normal");
+                    doc.setFontSize(10);
+                    doc.text(`Generado: ${new Date().toLocaleDateString("es-CU")}`, 14, 28);
+                    let y = 38;
+                    doc.setFont("Helvetica", "bold");
+                    doc.setFontSize(9);
+                    doc.text("Producto", 14, y);
+                    doc.text("Almacen", 80, y);
+                    doc.text("Min", 130, y);
+                    doc.text("Actual", 156, y);
+                    doc.text("Valor CUP", 180, y);
+                    y += 6;
+                    doc.setFont("Helvetica", "normal");
+                    doc.setFontSize(8);
+                    stocks.forEach((s) => {
+                      if (y > 275) { doc.addPage(); y = 20; }
+                      const value = s.quantity * (s.product?.costCUP || 0);
+                      doc.text(String(s.product?.name || "N/A").substring(0, 30), 14, y);
+                      doc.text(String(s.warehouse?.name || "N/A"), 80, y);
+                      doc.text(String(s.minStock), 130, y);
+                      doc.text(String(s.quantity), 156, y);
+                      doc.text(`$${(value || 0).toLocaleString()}`, 180, y);
+                      y += 6;
+                    });
+                    y += 4;
+                    const totalValue = stocks.reduce((sum, s) => sum + s.quantity * (s.product?.costCUP || 0), 0);
+                    doc.setFont("Helvetica", "bold");
+                    doc.setFontSize(10);
+                    doc.text(`Valor Total del Inventario: $${totalValue.toLocaleString()} CUP`, 14, y);
+                    doc.save("Inventario_Nimbo.pdf");
+                  }}
+                  className="bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl py-2 px-4 text-xs transition-all flex items-center cursor-pointer"
+                >
+                  <FileText className="h-4 w-4 mr-1.5" />
+                  Exportar PDF
+                </button>
               </div>
 
               {/* Stock controls quick movement registers */}
@@ -2720,16 +2805,18 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Transfermovil Settings */}
-              <TransfermovilSettings
-                cardCUP="9225 1234 5678 9012"
-                cardUSD="9205 9876 5432 1098"
-                phone="+53 52987654"
-                merchantId="482019"
-                triggerToast={triggerToast}
-                onRefreshData={loadAllData}
-                userId={user.id}
-              />
+              {/* Transfermovil Settings (solo SUPER_ADMIN) */}
+              {user?.role === Role.SUPER_ADMIN && (
+                <TransfermovilSettings
+                  cardCUP="9225 1234 5678 9012"
+                  cardUSD="9205 9876 5432 1098"
+                  phone="+53 52987654"
+                  merchantId="482019"
+                  triggerToast={triggerToast}
+                  onRefreshData={loadAllData}
+                  userId={user.id}
+                />
+              )}
 
               {/* User Management */}
               <UserManager

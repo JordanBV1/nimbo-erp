@@ -334,6 +334,14 @@ async function startServer() {
     return res.json(org);
   });
 
+  app.get("/api/branches", authenticate, (req, res) => {
+    const { orgId } = req.query;
+    if (!orgId) return res.status(400).json({ error: "orgId es requerido" });
+    const all = db.branches.findMany();
+    const filtered = all.filter((b: any) => b.organizationId === orgId);
+    return res.json(filtered);
+  });
+
   // --- Subscription Routes ---
 
   app.get("/api/subscription/payments", authenticate, (req, res) => {
@@ -1298,7 +1306,7 @@ app.post("/api/rrhh/employees", (req, res) => {
     const branches = db.branches.findMany();
 
     let filtered = allUsers;
-    if (_req.user!.role !== Role.ADMIN) {
+    if (_req.user!.role !== Role.ADMIN && _req.user!.role !== Role.SUPER_ADMIN) {
       filtered = allUsers.filter((u) => u.branchId === _req.user!.branchId);
     }
 
@@ -1316,7 +1324,7 @@ app.post("/api/rrhh/employees", (req, res) => {
       return res.status(400).json({ error: "Nombre, email y rol son requeridos" });
     }
 
-    const isAdmin = req.user!.role === Role.ADMIN;
+    const isAdmin = req.user!.role === Role.ADMIN || req.user!.role === Role.SUPER_ADMIN;
     const isSameBranch = req.user!.branchId === branchId || !branchId;
 
     if (!isAdmin && !isSameBranch) {
@@ -1353,7 +1361,7 @@ app.post("/api/rrhh/employees", (req, res) => {
       return res.status(404).json({ error: "Usuario no encontrado" });
     }
 
-    const isAdmin = req.user!.role === Role.ADMIN;
+    const isAdmin = req.user!.role === Role.ADMIN || req.user!.role === Role.SUPER_ADMIN;
     if (!isAdmin && existing.branchId !== req.user!.branchId) {
       return res.status(403).json({ error: "Solo puedes modificar usuarios de tu propia sucursal" });
     }
@@ -1389,7 +1397,7 @@ app.post("/api/rrhh/employees", (req, res) => {
       return res.status(404).json({ error: "Usuario no encontrado" });
     }
 
-    const isAdmin = req.user!.role === Role.ADMIN;
+    const isAdmin = req.user!.role === Role.ADMIN || req.user!.role === Role.SUPER_ADMIN;
     if (!isAdmin && existing.branchId !== req.user!.branchId) {
       return res.status(403).json({ error: "Solo puedes eliminar usuarios de tu propia sucursal" });
     }

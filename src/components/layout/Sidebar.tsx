@@ -22,15 +22,16 @@ import {
   Sparkles,
   CreditCard
 } from "lucide-react";
-import { BusinessType, MODULE_VISIBILITY } from "../../types.js";
+import { BusinessType, MODULE_VISIBILITY, Role } from "../../types.js";
 
 interface SidebarProps {
   currentModule: string;
   onSelectModule: (module: string) => void;
   businessType: BusinessType;
+  userRole?: string;
 }
 
-export default function Sidebar({ currentModule, onSelectModule, businessType }: SidebarProps) {
+export default function Sidebar({ currentModule, onSelectModule, businessType, userRole }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
 
   // Get visible modules based on business type
@@ -56,7 +57,8 @@ export default function Sidebar({ currentModule, onSelectModule, businessType }:
   // Filter based on allowed list
   const navItems = allNavItems.filter((item) => {
     if (item.id === "dashboard") return true; // Dashboard is always visible
-    if (item.id === "suscripcion") return true; // Subscription settings is always visible
+    if (item.id === "suscripcion") return true; // Subscription is always visible
+    if (item.id === "configuracion") return userRole === Role.SUPER_ADMIN; // Only superadmin sees config
     return allowedModules.includes(item.id);
   });
 
