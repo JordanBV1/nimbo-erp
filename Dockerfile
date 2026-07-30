@@ -1,11 +1,16 @@
-FROM node:22-alpine
+FROM node:22-alpine AS builder
 RUN apk add --no-cache python3 make g++
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --ignore-scripts=false
+RUN npm ci
 COPY . .
-EXPOSE 3000
+RUN npm run build
+
+FROM node:22-alpine
+RUN apk add --no-cache python3 make g++
+WORKDIR /app
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/package.json /app/package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts=false
 ENV NODE_ENV=production
-ENV JWT_SECRET=REDACTED_ROTATE_ME
-ENV PORT=3000
 CMD ["node", "dist/server.cjs"]
