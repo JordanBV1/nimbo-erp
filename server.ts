@@ -334,19 +334,6 @@ async function startServer() {
     return res.json(org);
   });
 
-  app.post("/api/auth/onboarding", authenticate, (req, res) => {
-    const { branchId, businessType } = req.body;
-    if (!branchId || !businessType) {
-      return res.status(400).json({ error: "Faltan parámetros de onboarding" });
-    }
-    const branch = db.branches.update(branchId, { businessType });
-    if (!branch) {
-      return res.status(404).json({ error: "Sucursal no encontrada" });
-    }
-    logAudit(req.user!.userId, "ONBOARDING", "Branch", branchId, `Set businessType to ${businessType}`);
-    return res.json({ branch });
-  });
-
   // --- Subscription Routes ---
 
   app.get("/api/subscription/payments", authenticate, (req, res) => {
@@ -1302,6 +1289,96 @@ app.post("/api/rrhh/employees", (req, res) => {
     });
     logAudit(req.user!.userId, "CREATE_PAYROLL", "PayrollPeriod", period.id, `Payroll ${startDate} to ${endDate}`);
     return res.json(period);
+  });
+
+  // --- User Management ---
+
+  app.get("/api/users", authenticate, (_req, res) => {
+    const allUsers = db.users.findMany();
+    const branches = db.branches.findMany();
+
+    const detailedUsers = allUsers.map((u) => {
+      const branch = branches.find((b) => b.id === u.branchId);
+      return { ...u, password: undefined, branchName: branch ? branch.name : "Sin Sucursal" };
+    });
+
+    return res.json({ users: detailedUsers, branches });
+  });
+
+  app.post("/api/users", authenticate, authorize(Role.ADMIN), async (req, res) => {
+    const { name, email, password, role, branchId } = req.body;
+    if (!name || !email || !role) {
+      return res.status(400).json({ error: "Nombre, email y rol son requeridos" });
+    }
+
+    const existing = db.users.findByEmail(email);
+    if (existing) {
+      return res.status(400).json({ error: "Ya existe un usuario registrado con este correo electrónico" });
+    }
+
+    let targetBranchId = branchId;
+    if (!targetBranchId) {
+      const allBranches = db.branches.findMany();
+      if (allBranches.length > 0) targetBranchId = allBranches[0].id;
+    }
+
+    const hashedPassword = password ? await bcrypt.hash(password, SALT_ROUNDS) : undefined;
+
+    const newUser = db.users.create({
+      name,
+      email: email.trim().toLowerCase(),
+      password: hashedPassword || (await bcrypt.hash("123456", SALT_ROUNDS)),
+      role: role as Role,
+      branchId: targetBranchId || ""
+    });
+
+    logAudit(req.user!.userId, "CREATE_USER", "User", newUser.id, `Usuario ${newUser.name} (${newUser.role}) creado`);
+    return res.json({ success: true, user: { ...newUser, password: undefined } });
+  });
+
+  app.put("/api/users/:id", authenticate, authorize(Role.ADMIN), async (req, res) => {
+    const { id } = req.params;
+    const { name, email, password, role, branchId } = req.body;
+
+    const existing = db.users.findById(id);
+    if (!existing) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    if (email && email.toLowerCase() !== existing.email.toLowerCase()) {
+      const other = db.users.findByEmail(email);
+      if (other) {
+        return res.status(400).json({ error: "El nuevo correo ya está en uso por otro usuario" });
+      }
+    }
+
+    const updateData: any = {};
+    if (name) updateData.name = name;
+    if (email) updateData.email = email.trim().toLowerCase();
+    if (role) updateData.role = role as Role;
+    if (branchId) updateData.branchId = branchId;
+    if (password && password.trim() !== "") updateData.password = await bcrypt.hash(password, SALT_ROUNDS);
+
+    const updatedUser = db.users.update(id, updateData);
+    logAudit(req.user!.userId, "UPDATE_USER", "User", id, `Usuario ${updatedUser?.name} actualizado`);
+    return res.json({ success: true, user: { ...updatedUser, password: undefined } });
+  });
+
+  app.delete("/api/users/:id", authenticate, authorize(Role.ADMIN), (req, res) => {
+    const { id } = req.params;
+
+    if (id === req.user!.userId) {
+      return res.status(400).json({ error: "No puedes eliminar tu propio usuario en sesión activa" });
+    }
+
+    const existing = db.users.findById(id);
+    if (!existing) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    db.users.delete(id);
+    logAudit(req.user!.userId, "DELETE_USER", "User", id, `Usuario ${existing.name} (${existing.email}) eliminado`);
+    return res.json({ success: true });
   });
 
   // --- Config ---

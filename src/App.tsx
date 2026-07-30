@@ -41,6 +41,9 @@ import Sidebar from "./components/layout/Sidebar.js";
 import Header from "./components/layout/Header.js";
 import DynamicDashboard from "./components/Dashboard/DynamicDashboard.js";
 import ONATReport from "./components/Reports/ONATReport.js";
+import { TransfermovilQRModal } from "./components/POS/TransfermovilQRModal.js";
+import { TransfermovilSettings } from "./components/Settings/TransfermovilSettings.js";
+import UserManager from "./components/Users/UserManager.js";
 import { offlineQueue } from "./utils/offlineQueue.js";
 import { Role, BusinessType, Currency } from "./types.js";
 import { jsPDF } from "jspdf";
@@ -118,6 +121,10 @@ export default function App() {
   const [posPaidAmount, setPosPaidAmount] = useState<string>("");
   const [posPointsRedeem, setPosPointsRedeem] = useState<number>(0);
 
+  // Transfermovil QR Modal state
+  const [posQRModalOpen, setPosQRModalOpen] = useState<boolean>(false);
+  const [posQRPendingRef, setPosQRPendingRef] = useState<string>("");
+
   // Form toggles and temporary edit states
   const [showProductForm, setShowProductForm] = useState<boolean>(false);
   const [newProdName, setNewProdName] = useState<string>("");
@@ -148,9 +155,9 @@ export default function App() {
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [toastType, setToastType] = useState<"success" | "error">("success");
 
-  const triggerToast = (msg: string, type: "success" | "error" = "success") => {
+  const triggerToast = (msg: string, type: "success" | "error" | "info" | "warning" = "success") => {
     setToastMsg(msg);
-    setToastType(type);
+    setToastType(type === "info" || type === "warning" ? "success" : type);
     setTimeout(() => setToastMsg(null), 4000);
   };
 
@@ -407,24 +414,6 @@ export default function App() {
       triggerToast("Fallo de conexión al enviar el pago.", "error");
     } finally {
       setIsSubmittingPayment(false);
-    }
-  };
-
-  const handleOnboarding = async (bType: BusinessType) => {
-    try {
-      const res = await fetch("/api/auth/onboarding", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ branchId: branch.id, businessType: bType, userId: user.id })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setBranch(data.branch);
-        localStorage.setItem("nimbo_branch", JSON.stringify(data.branch));
-        triggerToast(`Configurado como negocio: ${bType}`, "success");
-      }
-    } catch (err) {
-      console.error(err);
     }
   };
 
@@ -694,102 +683,163 @@ export default function App() {
     return Object.values(map).sort((a, b) => b.units - a.units).slice(0, 5);
   };
 
-  // Auto-login as admin@nimbo.com (skip login screen)
-  useEffect(() => {
-    if (!user) {
-      (async () => {
-        try {
-          const res = await fetch("/api/auth/login", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: "admin@nimbo.com", password: "123456" })
-          });
-          if (res.ok) {
-            const data = await res.json();
-            setToken(data.token);
-            setUser(data.user);
-            setBranch(data.branch);
-            setOrg(data.organization);
-            sessionStorage.setItem("nimbo_user_meta", JSON.stringify(data.user));
-            sessionStorage.setItem("nimbo_branch", JSON.stringify(data.branch));
-            sessionStorage.setItem("nimbo_org", JSON.stringify(data.organization));
-          }
-        } catch (err) {
-          console.error("Auto-login failed:", err);
-        }
-      })();
-    }
-  }, []);
-
-  // Render Onboarding state if business type is undefined / null
-  if (!branch || !branch.businessType) {
-    const onboardingGroups = [
-      {
-        title: "Alimentación y Gastronomía",
-        types: [
-          { value: BusinessType.BAKERY, label: "Panadería / Repostería", desc: "Gestión de recetas complejas, merma de materia prima e ingredientes." },
-          { value: BusinessType.CAFETERIA, label: "Cafetería / Bar", desc: "Punto de venta súper dinámico, control de mesas y despachos." }
-        ]
-      },
-      {
-        title: "Comercio Minorista (Retail)",
-        types: [
-          { value: BusinessType.CLOTHING, label: "Tienda de Ropa / Moda", desc: "Variantes de productos (Talla, Color) y control de stock detallado." },
-          { value: BusinessType.ELECTRONICS, label: "Electrónica / Taller", desc: "Registro de números de serie, órdenes de servicio técnico." },
-          { value: BusinessType.GROCERY, label: "Bodega / Alimentos", desc: "Control rápido de cajas, balanzas de peso, vencimiento de lotes." }
-        ]
-      },
-      {
-        title: "Servicios y Manufactura",
-        types: [
-          { value: BusinessType.WORKSHOP, label: "Carpintería / Manufactura", desc: "Órdenes de producción, costos fijos e indirectos asignados." },
-          { value: BusinessType.SERVICES, label: "Salón de Belleza / Servicios", desc: "Contratos de empleados por horas, comisiones, agendas." }
-        ]
-      }
-    ];
-
+  // Render Login screen if not authenticated
+  if (!user) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center px-6 py-12" id="onboarding-screen">
-        <div className="max-w-4xl mx-auto space-y-8">
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-4 relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl -translate-x-12 -translate-y-12"></div>
+        <div className="absolute bottom-0 right-0 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl translate-x-12 translate-y-12"></div>
+
+        <div className="w-full max-w-md bg-[#121214] border border-slate-800 rounded-3xl p-8 shadow-2xl relative z-10 space-y-6">
           <div className="text-center space-y-2">
-            <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-500/10 text-blue-400 border border-blue-500/20">
-              <Building className="h-6 w-6" />
+            <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-500/10 text-blue-400 border border-blue-500/20 shadow-xl shadow-blue-500/5">
+              <Building className="h-7 w-7" />
             </span>
-            <h2 className="text-3xl font-black tracking-tight">Onboarding de tu Negocio</h2>
-            <p className="text-sm text-slate-400 max-w-lg mx-auto">
-              Selecciona el perfil de tu sucursal. Esto habilitará automáticamente los módulos adecuados y ocultará los innecesarios para tu flujo de trabajo diario.
-            </p>
+            <h2 className="text-2xl font-black text-white tracking-tight font-display">Nimbo ERP</h2>
+            <p className="text-xs text-slate-400">Sistema de Gestión Empresarial</p>
           </div>
 
-          <div className="space-y-6">
-            {onboardingGroups.map((group, gIdx) => (
-              <div key={gIdx} className="space-y-3">
-                <h3 className="text-xs font-black tracking-widest text-blue-400 uppercase font-mono">{group.title}</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {group.types.map((type) => (
-                    <div
-                      key={type.value}
-                      onClick={() => handleOnboarding(type.value)}
-                      className="p-5 bg-slate-900 border border-slate-800 hover:border-blue-500 rounded-2xl transition-all cursor-pointer flex flex-col justify-between group"
-                    >
-                      <div>
-                        <h4 className="text-sm font-bold text-white group-hover:text-blue-300 transition-colors">{type.label}</h4>
-                        <p className="text-xs text-slate-400 mt-1">{type.desc}</p>
-                      </div>
-                      <span className="text-[10px] text-blue-400 font-mono mt-3 flex items-center">
-                        Activar este perfil <ArrowRight className="h-3 w-3 ml-1 group-hover:translate-x-1 transition-transform" />
-                      </span>
-                    </div>
-                  ))}
-                </div>
+          {authError && (
+            <div className="p-3 bg-rose-950/40 border border-rose-500/30 rounded-xl text-xs text-rose-300 font-medium flex items-center space-x-2">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span>{authError}</span>
+            </div>
+          )}
+
+          {!isRegistering ? (
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Correo Electrónico</label>
+                <input
+                  type="email"
+                  required
+                  placeholder="ejemplo@negocio.com"
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+                />
               </div>
-            ))}
-          </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Contraseña</label>
+                <input
+                  type="password"
+                  required
+                  placeholder="••••••••"
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+                />
+              </div>
+              <button
+                type="submit"
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl py-2.5 text-sm transition-all shadow-lg shadow-blue-600/20 cursor-pointer"
+              >
+                Iniciar Sesión
+              </button>
+              <p className="text-xs text-slate-500 text-center">
+                ¿No tienes cuenta?{' '}
+                <button
+                  type="button"
+                  onClick={() => { setIsRegistering(true); setAuthError(null); }}
+                  className="text-blue-400 hover:underline font-semibold cursor-pointer"
+                >
+                  Registrarse
+                </button>
+              </p>
+            </form>
+          ) : (
+            <form onSubmit={handleRegister} className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Nombre de la Empresa / Marca</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Mi Negocio"
+                  value={regOrg}
+                  onChange={(e) => setRegOrg(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Nombre de la Sucursal</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Sucursal Principal"
+                  value={regBranch}
+                  onChange={(e) => setRegBranch(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Nombre del Administrador</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Tu Nombre"
+                  value={regUser}
+                  onChange={(e) => setRegUser(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Correo Electrónico</label>
+                <input
+                  type="email"
+                  required
+                  placeholder="admin@negocio.com"
+                  value={regEmail}
+                  onChange={(e) => setRegEmail(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Contraseña</label>
+                <input
+                  type="password"
+                  required
+                  placeholder="Mínimo 6 caracteres"
+                  value={regPassword}
+                  onChange={(e) => setRegPassword(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tipo de Negocio</label>
+                <select
+                  value={regType}
+                  onChange={(e) => setRegType(e.target.value as BusinessType)}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm font-bold text-white focus:outline-none focus:border-blue-500 cursor-pointer"
+                >
+                  {Object.values(BusinessType).map((bt) => (
+                    <option key={bt} value={bt}>{bt}</option>
+                  ))}
+                </select>
+              </div>
+              <button
+                type="submit"
+                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl py-2.5 text-sm transition-all shadow-lg shadow-emerald-600/20 cursor-pointer"
+              >
+                Crear Cuenta Gratuita
+              </button>
+              <p className="text-xs text-slate-500 text-center">
+                ¿Ya tienes cuenta?{' '}
+                <button
+                  type="button"
+                  onClick={() => { setIsRegistering(false); setAuthError(null); }}
+                  className="text-blue-400 hover:underline font-semibold cursor-pointer"
+                >
+                  Iniciar Sesión
+                </button>
+              </p>
+            </form>
+          )}
         </div>
       </div>
     );
   }
 
+// Render Subscription paywall if expired
   if (isSubscriptionExpired()) {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-4 relative overflow-hidden" id="billing-paywall">
@@ -1448,12 +1498,31 @@ export default function App() {
                       </div>
 
                       <button
-                        onClick={handleCheckout}
+                        onClick={() => {
+                          if (posPaymentMethod === "Transfermóvil") {
+                            setPosQRModalOpen(true);
+                          } else {
+                            handleCheckout();
+                          }
+                        }}
                         className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-2xl py-3.5 text-xs transition-all shadow-lg shadow-blue-600/20 flex items-center justify-center cursor-pointer"
                       >
                         <CreditCard className="h-4 w-4 mr-2" />
                         Completar y Cobrar Venta
                       </button>
+
+                      {/* Transfermovil QR Payment Modal */}
+                      <TransfermovilQRModal
+                        isOpen={posQRModalOpen}
+                        onClose={() => setPosQRModalOpen(false)}
+                        onConfirmPayment={(ref) => {
+                          setPosQRPendingRef(ref);
+                          setPosQRModalOpen(false);
+                          handleCheckout();
+                        }}
+                        amount={Math.max(0, posCart.reduce((sum: number, item: any) => sum + (posCurrencyChoice === Currency.USD ? item.priceUSD * item.quantity : item.priceCUP * item.quantity), 0) - Number(posDiscount || 0))}
+                        currency={posCurrencyChoice}
+                      />
                     </div>
                   </div>
                 </div>
@@ -2650,6 +2719,25 @@ export default function App() {
                   </div>
                 </div>
               </div>
+
+              {/* Transfermovil Settings */}
+              <TransfermovilSettings
+                cardCUP="9225 1234 5678 9012"
+                cardUSD="9205 9876 5432 1098"
+                phone="+53 52987654"
+                merchantId="482019"
+                triggerToast={triggerToast}
+                onRefreshData={loadAllData}
+                userId={user.id}
+              />
+
+              {/* User Management */}
+              <UserManager
+                currentUser={user}
+                org={org}
+                triggerToast={triggerToast}
+                onRefreshData={loadAllData}
+              />
             </div>
           )}
         </main>

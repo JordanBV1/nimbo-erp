@@ -510,6 +510,7 @@ export const db = {
       getDb().prepare(`UPDATE users SET ${sets.join(", ")}, updated_at = datetime('now') WHERE id = ?`).run(...vals);
       return db.users.findById(id);
     },
+    delete: (id: string) => { getDb().prepare("DELETE FROM users WHERE id = ?").run(id); return true; },
   },
   categories: {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM categories"))),
