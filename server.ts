@@ -579,6 +579,7 @@ async function startServer() {
     if (!name) return res.status(400).json({ error: "Nombre es requerido" });
     const slug = name.toLowerCase().replace(/\s+/g, "-");
     const item = db.categories.create({ name, slug, parentId });
+    logAudit(req.body.userId || "sistema", "CREATE", "Category", item.id, `Created category ${name}`);
     return res.json(item);
   });
 
@@ -935,6 +936,8 @@ async function startServer() {
         });
       });
     }
+    const auditUserId = req.body.userId || "sistema";
+    logAudit(auditUserId, "CREATE_ORDER", "Order", order.id, `Created order for ${totalCUP} CUP`);
     return res.json(order);
   });
 
@@ -942,6 +945,7 @@ async function startServer() {
     const { id } = req.params;
     const { status, assignedDriverId } = req.body;
     const order = db.orders.update(id, { status, assignedDriverId });
+    logAudit(req.body.userId || "sistema", "UPDATE_ORDER_STATUS", "Order", id, `Status changed to ${status}`);
     return res.json(order);
   });
 
@@ -968,6 +972,7 @@ async function startServer() {
   app.post("/api/compras/suppliers", (req, res) => {
     const { name, contact, taxId, email, phone, address, paymentTerms } = req.body;
     const item = db.suppliers.create({ name, contact, taxId, email, phone, address, paymentTerms });
+    logAudit(req.body.userId || "sistema", "CREATE", "Supplier", item.id, `Created supplier ${name}`);
     return res.json(item);
   });
 
@@ -986,6 +991,7 @@ async function startServer() {
         });
       });
     }
+    logAudit(req.body.createdBy || "sistema", "CREATE_PURCHASE_ORDER", "PurchaseOrder", po.id);
     return res.json(po);
   });
 
@@ -1055,6 +1061,7 @@ async function startServer() {
       name, email: email || "", phone: phone || "", address: address || "",
       taxId: taxId || "", creditLimit: Number(creditLimit) || 0, currentBalance: 0, loyaltyPoints: 0,
     });
+    logAudit(req.body.userId || "sistema", "CREATE", "Customer", client.id, `Created customer ${name}`);
     return res.json(client);
   });
 
@@ -1066,6 +1073,7 @@ async function startServer() {
       creditLimit: creditLimit !== undefined ? Number(creditLimit) : undefined,
       loyaltyPoints: loyaltyPoints !== undefined ? Number(loyaltyPoints) : undefined,
     });
+    logAudit(req.body.userId || "sistema", "UPDATE", "Customer", id, `Updated customer ${name}`);
     return res.json(updated);
   });
 
@@ -1107,6 +1115,7 @@ async function startServer() {
         db.recipeIngredients.create({ recipeId: rec.id, ingredientProductId: ing.ingredientProductId, quantity: Number(ing.quantity), unit: ing.unit || "kg", wastePercent: Number(ing.wastePercent) || 0 });
       });
     }
+    logAudit(req.body.userId || "sistema", "CREATE", "Recipe", rec.id, `Created recipe ${name}`);
     return res.json(rec);
   });
 
@@ -1114,12 +1123,14 @@ async function startServer() {
     const { id } = req.params;
     db.recipeIngredients.deleteByRecipeId(id);
     db.recipes.delete(id);
+    logAudit(req.body.userId || "sistema", "DELETE", "Recipe", id);
     return res.json({ success: true });
   });
 
   app.post("/api/produccion/orders", (req, res) => {
     const { productId, recipeId, plannedQuantity, warehouseId, notes } = req.body;
     const order = db.productionOrders.create({ productId, recipeId: recipeId || undefined, plannedQuantity: Number(plannedQuantity), producedQuantity: 0, status: "planned", warehouseId, notes: notes || "" });
+    logAudit(req.body.userId || "sistema", "CREATE", "ProductionOrder", order.id, `Planned ${plannedQuantity} units`);
     return res.json(order);
   });
 
@@ -1216,9 +1227,10 @@ async function startServer() {
       db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "4010", debit: 0, credit: amt });
     } else {
       db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "5030", debit: amt, credit: 0 });
-      db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "1010", debit: 0, credit: amt });
+db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "1010", debit: 0, credit: amt });
     }
-
+    const auditUserId = userId || req.user!.userId;
+    logAudit(auditUserId, "CREATE_TRANSACTION", "CashTransaction", trans.id, `${type} ${amount} ${currency} - ${description}`);
     return res.json(trans);
   });
 
@@ -1239,7 +1251,7 @@ async function startServer() {
     return res.json({ employees: detailedEmployees, periods: detailedPeriods });
   });
 
-  app.post("/api/rrhh/employees", (req, res) => {
+app.post("/api/rrhh/employees", (req, res) => {
     const { firstName, lastName, hireDate, baseSalary, paymentType, bankAccount, taxId, socialSecurityNumber } = req.body;
     const emp = db.employees.create({
       firstName, lastName, hireDate: hireDate || new Date().toISOString().substring(0, 10),
@@ -1247,6 +1259,7 @@ async function startServer() {
       bankAccount: bankAccount || "", taxId: taxId || "", socialSecurityNumber: socialSecurityNumber || "",
       vacationDays: 24,
     });
+    logAudit(req.body.userId || "sistema", "CREATE", "Employee", emp.id, `Created employee ${firstName} ${lastName}`);
     return res.json(emp);
   });
 
@@ -1264,6 +1277,7 @@ async function startServer() {
       checkOut: checkOut ? `${date}T${checkOut}:00.000Z` : undefined,
       hoursWorked: hoursWorked > 0 ? Number(hoursWorked.toFixed(2)) : undefined,
     });
+    logAudit(req.body.userId || "sistema", "CREATE", "Attendance", att.id, `Attendance for employee ${employeeId} on ${date}`);
     return res.json(att);
   });
 
@@ -1286,7 +1300,7 @@ async function startServer() {
       db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "5020", debit: netPay, credit: 0 });
       db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "1010", debit: 0, credit: netPay });
     });
-
+    logAudit(req.user!.userId, "CREATE_PAYROLL", "PayrollPeriod", period.id, `Payroll ${startDate} to ${endDate}`);
     return res.json(period);
   });
 
