@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: nimbo-erp
+    env: node
+    region: ohio
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: node dist/server.cjs
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PORT
+        value: 10000
+    disk:
+      name: nimbo-db-data
+      mountPath: /app/db-data
+      sizeGB: 1

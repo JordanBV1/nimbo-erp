@@ -76,9 +76,7 @@ export default function DynamicDashboard({
           <h2 className="text-2xl md:text-3xl font-black tracking-tight mt-1">
             Resumen de Operaciones
           </h2>
-          <p className="text-sm text-slate-300 max-w-xl">
-            Bienvenido al panel de control centralizado de Nimbo ERP. Monitorea tus ventas duales (CUP/USD), producción en tiempo real, alertas críticas de stock y balances contables automáticos.
-          </p>
+          
         </div>
 
         {/* Quick action grid inside hero */}

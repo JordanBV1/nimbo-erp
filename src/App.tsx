@@ -694,207 +694,32 @@ export default function App() {
     return Object.values(map).sort((a, b) => b.units - a.units).slice(0, 5);
   };
 
-  // Render Login state
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 relative overflow-hidden" id="login-screen">
-        {/* Visual cosmic glow grids */}
-        <div className="absolute top-0 left-0 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl -translate-x-12 -translate-y-12"></div>
-        <div className="absolute bottom-0 right-0 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl translate-x-12 translate-y-12"></div>
-
-        <div className="w-full max-w-md bg-[#121214] border border-slate-800 rounded-3xl p-8 shadow-2xl relative z-10 space-y-6">
-          <div className="text-center space-y-2">
-            <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-500/10 text-blue-400 border border-blue-500/20 shadow-xl shadow-blue-500/5">
-              <Sparkles className="h-6 w-6" />
-            </span>
-            <h1 className="text-2xl font-black text-white tracking-wider font-display">NIMBO ERP</h1>
-            <p className="text-xs text-slate-400 font-medium">Gestión Profesional para Negocios de Cuba</p>
-          </div>
-
-          {authError && (
-            <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs rounded-xl p-3 flex items-start space-x-2">
-              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-              <span>{authError}</span>
-            </div>
-          )}
-
-          {!isRegistering ? (
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Correo Electrónico</label>
-                <input
-                  type="email"
-                  value={emailInput}
-                  onChange={(e) => setEmailInput(e.target.value)}
-                  placeholder="ej. admin@bakery.com"
-                  required
-                  className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-white rounded-xl py-3 px-4 text-sm font-medium transition-all outline-none"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Contraseña</label>
-                <div className="relative">
-                  <input
-                    type="password"
-                    value={passwordInput}
-                    onChange={(e) => setPasswordInput(e.target.value)}
-                    placeholder="Contraseña (ej. 123456 para demos)"
-                    required
-                    className="w-full bg-slate-950 border border-slate-800 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-xl py-3 px-4 text-sm font-medium outline-none pr-10"
-                  />
-                  <Lock className="h-4 w-4 text-slate-600 absolute right-3.5 top-3.5" />
-                </div>
-                <p className="text-[10px] text-slate-500 mt-1 font-mono">Para cuentas demo pre-configuradas usa la contraseña: <span className="text-blue-400 font-bold">123456</span></p>
-              </div>
-
-              <button
-                type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl py-3 text-sm transition-all shadow-lg shadow-blue-600/20 flex items-center justify-center cursor-pointer"
-              >
-                Ingresar al Sistema
-                <ArrowRight className="h-4 w-4 ml-2" />
-              </button>
-
-              {/* Presets Grid */}
-              <div className="border-t border-slate-800/60 pt-4 space-y-2">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center">Cuentas Demo Pre-configuradas</p>
-                <div className="grid grid-cols-2 gap-2 text-left">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEmailInput("admin@bakery.com");
-                      setPasswordInput("123456");
-                    }}
-                    className="p-2.5 rounded-xl border border-slate-800 hover:border-blue-500 bg-slate-950 text-slate-300 text-[10px] font-medium flex flex-col justify-between transition-all"
-                  >
-                    <span className="text-white font-bold text-xs truncate">Panadería</span>
-                    <span className="text-blue-400 truncate mt-0.5">admin@bakery.com</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEmailInput("admin@ropa.com");
-                      setPasswordInput("123456");
-                    }}
-                    className="p-2.5 rounded-xl border border-slate-800 hover:border-blue-500 bg-slate-950 text-slate-300 text-[10px] font-medium flex flex-col justify-between transition-all"
-                  >
-                    <span className="text-white font-bold text-xs truncate">Boutique Ropa</span>
-                    <span className="text-blue-400 truncate mt-0.5">admin@ropa.com</span>
-                  </button>
-                </div>
-              </div>
-
-              <div className="text-center">
-                <button
-                  type="button"
-                  onClick={() => setIsRegistering(true)}
-                  className="text-xs text-blue-400 font-bold hover:underline"
-                >
-                  Registrar una nueva Organización
-                </button>
-              </div>
-            </form>
-          ) : (
-            <form onSubmit={handleRegister} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Nombre del Negocio</label>
-                <input
-                  type="text"
-                  value={regOrg}
-                  onChange={(e) => setRegOrg(e.target.value)}
-                  placeholder="ej. Café Cuba S.R.L."
-                  required
-                  className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 text-white rounded-xl py-2.5 px-4 text-sm"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Nombre de Sucursal</label>
-                <input
-                  type="text"
-                  value={regBranch}
-                  onChange={(e) => setRegBranch(e.target.value)}
-                  placeholder="ej. Sucursal Vedado"
-                  required
-                  className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 text-white rounded-xl py-2.5 px-4 text-sm"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Nombre del Administrador</label>
-                <input
-                  type="text"
-                  value={regUser}
-                  onChange={(e) => setRegUser(e.target.value)}
-                  placeholder="ej. Alejandro Silva"
-                  required
-                  className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 text-white rounded-xl py-2.5 px-4 text-sm"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Correo Electrónico</label>
-                <input
-                  type="email"
-                  value={regEmail}
-                  onChange={(e) => setRegEmail(e.target.value)}
-                  placeholder="ej. alex@nauta.cu"
-                  required
-                  className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 text-white rounded-xl py-2.5 px-4 text-sm font-medium transition-all outline-none"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Contraseña de Acceso</label>
-                <input
-                  type="password"
-                  value={regPassword}
-                  onChange={(e) => setRegPassword(e.target.value)}
-                  placeholder="Crea una contraseña para tu cuenta"
-                  required
-                  className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 text-white rounded-xl py-2.5 px-4 text-sm font-medium transition-all outline-none"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Categoría Inicial de Negocio</label>
-                <select
-                  value={regType}
-                  onChange={(e) => setRegType(e.target.value as BusinessType)}
-                  className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl py-2.5 px-4 text-sm focus:outline-none"
-                >
-                  <option value={BusinessType.BAKERY} className="bg-slate-950">Panadería / Dulcería</option>
-                  <option value={BusinessType.CAFETERIA} className="bg-slate-950">Cafetería / Gastronomía</option>
-                  <option value={BusinessType.CLOTHING} className="bg-slate-950">Tienda de Ropa / Retail</option>
-                  <option value={BusinessType.ELECTRONICS} className="bg-slate-950">Electrónica / Talleres</option>
-                  <option value={BusinessType.GROCERY} className="bg-slate-950">Bodega / Supermercado</option>
-                  <option value={BusinessType.GENERAL} className="bg-slate-950">General / Multiservicio</option>
-                </select>
-              </div>
-
-              <button
-                type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl py-2.5 text-sm transition-all cursor-pointer"
-              >
-                Registrar Negocio
-              </button>
-
-              <div className="text-center">
-                <button
-                  type="button"
-                  onClick={() => setIsRegistering(false)}
-                  className="text-xs text-blue-400 font-bold hover:underline"
-                >
-                  Volver al Login
-                </button>
-              </div>
-            </form>
-          )}
-        </div>
-      </div>
-    );
-  }
+  // Auto-login as admin@nimbo.com (skip login screen)
+  useEffect(() => {
+    if (!user) {
+      (async () => {
+        try {
+          const res = await fetch("/api/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: "admin@nimbo.com", password: "123456" })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setToken(data.token);
+            setUser(data.user);
+            setBranch(data.branch);
+            setOrg(data.organization);
+            sessionStorage.setItem("nimbo_user_meta", JSON.stringify(data.user));
+            sessionStorage.setItem("nimbo_branch", JSON.stringify(data.branch));
+            sessionStorage.setItem("nimbo_org", JSON.stringify(data.organization));
+          }
+        } catch (err) {
+          console.error("Auto-login failed:", err);
+        }
+      })();
+    }
+  }, []);
 
   // Render Onboarding state if business type is undefined / null
   if (!branch || !branch.businessType) {
