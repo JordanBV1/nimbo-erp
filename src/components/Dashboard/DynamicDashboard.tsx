@@ -35,7 +35,7 @@ interface DashboardProps {
   businessType: BusinessType;
   stats: {
     todaySalesCUP: number;
-    todaySalesMLC: number;
+    todaySalesUSD: number;
     stockAlertsCount: number;
     pendingOrdersCount: number;
     activeProductionOrdersCount: number;
@@ -63,7 +63,7 @@ export default function DynamicDashboard({
 }: DashboardProps) {
   // Format currency
   const formatCUP = (v: number) => `$${v.toLocaleString()} CUP`;
-  const formatMLC = (v: number) => `$${v.toLocaleString()} MLC`;
+  const formatUSD = (v: number) => `$${v.toLocaleString()} USD`;
 
   return (
     <div className="space-y-6" id="dashboard-container">
@@ -77,7 +77,7 @@ export default function DynamicDashboard({
             Resumen de Operaciones
           </h2>
           <p className="text-sm text-slate-300 max-w-xl">
-            Bienvenido al panel de control centralizado de Nimbo ERP. Monitorea tus ventas duales (CUP/MLC), producción en tiempo real, alertas críticas de stock y balances contables automáticos.
+            Bienvenido al panel de control centralizado de Nimbo ERP. Monitorea tus ventas duales (CUP/USD), producción en tiempo real, alertas críticas de stock y balances contables automáticos.
           </p>
         </div>
 
@@ -221,7 +221,7 @@ export default function DynamicDashboard({
           </div>
           <div className="space-y-0.5">
             <p className="text-xl font-extrabold text-white leading-none font-display">{formatCUP(stats.todaySalesCUP)}</p>
-            <p className="text-sm font-semibold text-emerald-400 mt-1">{formatMLC(stats.todaySalesMLC)}</p>
+            <p className="text-sm font-semibold text-emerald-400 mt-1">{formatUSD(stats.todaySalesUSD)}</p>
           </div>
         </div>
 

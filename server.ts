@@ -108,9 +108,9 @@ const productSchema = z.object({
   categoryId: z.string().optional(),
   taxId: z.string().optional(),
   priceCUP: z.number().optional(),
-  priceMLC: z.number().optional(),
+  priceUSD: z.number().optional(),
   costCUP: z.number().optional(),
-  costMLC: z.number().optional(),
+  costUSD: z.number().optional(),
   imageUrl: z.string().optional(),
   variants: z.array(z.any()).optional(),
   userId: z.string().optional(),
@@ -124,17 +124,17 @@ const saleSchema = z.object({
     variantId: z.string().optional(),
     quantity: z.number().positive(),
     priceCUP: z.number().optional(),
-    priceMLC: z.number().optional(),
+    priceUSD: z.number().optional(),
     tax: z.number().optional(),
     discount: z.number().optional(),
   })).min(1, "Debe haber al menos un producto"),
   totalCUP: z.number().optional(),
-  totalMLC: z.number().optional(),
+  totalUSD: z.number().optional(),
   taxTotalCUP: z.number().optional(),
-  taxTotalMLC: z.number().optional(),
+  taxTotalUSD: z.number().optional(),
   discount: z.number().optional(),
   grandTotalCUP: z.number().optional(),
-  grandTotalMLC: z.number().optional(),
+  grandTotalUSD: z.number().optional(),
   paymentMethod: z.string().optional(),
   payments: z.array(z.any()).optional(),
   userId: z.string().optional(),
@@ -156,6 +156,22 @@ async function startServer() {
   }));
   app.use(express.json({ limit: "10mb" }));
   app.use(cookieParser());
+
+  // Basic Auth gate (optional, enabled by setting SITE_USERNAME & SITE_PASSWORD)
+  if (process.env.SITE_USERNAME && process.env.SITE_PASSWORD) {
+    app.use((req, res, next) => {
+      const auth = req.headers.authorization;
+      if (auth && auth.startsWith("Basic ")) {
+        const decoded = Buffer.from(auth.slice(6), "base64").toString();
+        const [user, pass] = decoded.split(":");
+        if (user === process.env.SITE_USERNAME && pass === process.env.SITE_PASSWORD) {
+          return next();
+        }
+      }
+      res.setHeader("WWW-Authenticate", 'Basic realm="Nimbo ERP"');
+      res.status(401).send("Acceso restringido");
+    });
+  }
 
   // Rate limiting
   const authLimiter = rateLimit({
@@ -456,7 +472,7 @@ async function startServer() {
     }
     const {
       name, description, sku, barcode, unitOfMeasure, isService,
-      categoryId, taxId, priceCUP, priceMLC, costCUP, costMLC, imageUrl, variants, userId
+      categoryId, taxId, priceCUP, priceUSD, costCUP, costUSD, imageUrl, variants, userId
     } = parsed.data;
 
     const prod = db.products.create({
@@ -469,9 +485,9 @@ async function startServer() {
       categoryId: categoryId || undefined,
       taxId: taxId || undefined,
       priceCUP: Number(priceCUP) || 0,
-      priceMLC: Number(priceMLC) || 0,
+      priceUSD: Number(priceUSD) || 0,
       costCUP: Number(costCUP) || 0,
-      costMLC: Number(costMLC) || 0,
+      costUSD: Number(costUSD) || 0,
       imageUrl: imageUrl || "",
     });
 
@@ -483,9 +499,9 @@ async function startServer() {
           sku: v.sku || "",
           barcode: v.barcode || "",
           priceCUP: Number(v.priceCUP) || 0,
-          priceMLC: Number(v.priceMLC) || 0,
+          priceUSD: Number(v.priceUSD) || 0,
           costCUP: Number(v.costCUP) || 0,
-          costMLC: Number(v.costMLC) || 0,
+          costUSD: Number(v.costUSD) || 0,
           stock: Number(v.stock) || 0,
         });
       });
@@ -526,16 +542,16 @@ async function startServer() {
     const { id } = req.params;
     const {
       name, description, sku, barcode, unitOfMeasure, isService,
-      categoryId, taxId, priceCUP, priceMLC, costCUP, costMLC, imageUrl, variants, userId
+      categoryId, taxId, priceCUP, priceUSD, costCUP, costUSD, imageUrl, variants, userId
     } = req.body;
 
     const updated = db.products.update(id, {
       name, description, sku, barcode, unitOfMeasure,
       isService: !!isService, categoryId, taxId,
       priceCUP: Number(priceCUP) || 0,
-      priceMLC: Number(priceMLC) || 0,
+      priceUSD: Number(priceUSD) || 0,
       costCUP: Number(costCUP) || 0,
-      costMLC: Number(costMLC) || 0,
+      costUSD: Number(costUSD) || 0,
       imageUrl,
     });
 
@@ -552,9 +568,9 @@ async function startServer() {
           sku: v.sku || "",
           barcode: v.barcode || "",
           priceCUP: Number(v.priceCUP) || 0,
-          priceMLC: Number(v.priceMLC) || 0,
+          priceUSD: Number(v.priceUSD) || 0,
           costCUP: Number(v.costCUP) || 0,
-          costMLC: Number(v.costMLC) || 0,
+          costUSD: Number(v.costUSD) || 0,
           stock: Number(v.stock) || 0,
         });
       });
@@ -756,8 +772,8 @@ async function startServer() {
       return res.status(400).json({ error: parsed.error.errors[0].message });
     }
     const {
-      branchId, customerId, items, totalCUP, totalMLC,
-      taxTotalCUP, taxTotalMLC, discount, grandTotalCUP, grandTotalMLC,
+      branchId, customerId, items, totalCUP, totalUSD,
+      taxTotalCUP, taxTotalUSD, discount, grandTotalCUP, grandTotalUSD,
       paymentMethod, payments, userId, isCredit, loyaltyPointsRedeemed,
     } = parsed.data;
 
@@ -766,12 +782,12 @@ async function startServer() {
       customerId: customerId || undefined,
       date: new Date().toISOString(),
       totalCUP: Number(totalCUP) || 0,
-      totalMLC: Number(totalMLC) || 0,
+      totalUSD: Number(totalUSD) || 0,
       taxTotalCUP: Number(taxTotalCUP) || 0,
-      taxTotalMLC: Number(taxTotalMLC) || 0,
+      taxTotalUSD: Number(taxTotalUSD) || 0,
       discount: Number(discount) || 0,
       grandTotalCUP: Number(grandTotalCUP) || 0,
-      grandTotalMLC: Number(grandTotalMLC) || 0,
+      grandTotalUSD: Number(grandTotalUSD) || 0,
       paymentMethod: paymentMethod || "efectivo",
       status: "completed",
       userId: userId || req.user!.userId,
@@ -787,7 +803,7 @@ async function startServer() {
         variantId: item.variantId || undefined,
         quantity: Number(item.quantity),
         unitPriceCUP: Number(item.priceCUP) || 0,
-        unitPriceMLC: Number(item.priceMLC) || 0,
+        unitPriceUSD: Number(item.priceUSD) || 0,
         tax: Number(item.tax) || 0,
         discount: Number(item.discount) || 0,
       });
@@ -823,8 +839,8 @@ async function startServer() {
       db.payments.create({
         saleId: sale.id,
         method: paymentMethod || "efectivo",
-        currency: (grandTotalMLC || 0) > 0 ? Currency.MLC : Currency.CUP,
-        amount: (grandTotalMLC || 0) > 0 ? (grandTotalMLC || 0) : (grandTotalCUP || 0),
+        currency: (grandTotalUSD || 0) > 0 ? Currency.USD : Currency.CUP,
+        amount: (grandTotalUSD || 0) > 0 ? (grandTotalUSD || 0) : (grandTotalCUP || 0),
         reference: paymentMethod !== "efectivo" ? `REF-${Math.floor(Math.random() * 900000) + 100000}` : undefined,
       });
     }
@@ -920,10 +936,10 @@ async function startServer() {
   });
 
   app.post("/api/orders", (req, res) => {
-    const { branchId, customerId, items, deliveryDate, totalCUP, totalMLC, notes, deliveryAddress, assignedDriverId, advancePayment } = req.body;
+    const { branchId, customerId, items, deliveryDate, totalCUP, totalUSD, notes, deliveryAddress, assignedDriverId, advancePayment } = req.body;
     const order = db.orders.create({
       branchId, customerId, deliveryDate, status: "pending",
-      totalCUP: Number(totalCUP) || 0, totalMLC: Number(totalMLC) || 0,
+      totalCUP: Number(totalCUP) || 0, totalUSD: Number(totalUSD) || 0,
       notes: notes || "", deliveryAddress: deliveryAddress || "",
       assignedDriverId: assignedDriverId || "", advancePayment: Number(advancePayment) || 0,
     });
@@ -931,7 +947,7 @@ async function startServer() {
       items.forEach((item: any) => {
         db.orderItems.create({
           orderId: order.id, productId: item.productId, variantId: item.variantId || undefined,
-          quantity: Number(item.quantity), unitPriceCUP: Number(item.priceCUP) || 0, unitPriceMLC: Number(item.priceMLC) || 0,
+          quantity: Number(item.quantity), unitPriceCUP: Number(item.priceCUP) || 0, unitPriceUSD: Number(item.priceUSD) || 0,
         });
       });
     }
@@ -982,7 +998,7 @@ async function startServer() {
       items.forEach((item: any) => {
         db.purchaseOrderItems.create({
           purchaseOrderId: po.id, productId: item.productId, variantId: item.variantId || undefined,
-          quantity: Number(item.quantity), unitCostCUP: Number(item.costCUP) || 0, unitCostMLC: Number(item.costMLC) || 0, receivedQty: 0,
+          quantity: Number(item.quantity), unitCostCUP: Number(item.costCUP) || 0, unitCostUSD: Number(item.costUSD) || 0, receivedQty: 0,
         });
       });
     }
@@ -998,7 +1014,7 @@ async function startServer() {
     const poItems = db.purchaseOrderItems.findMany().filter((i) => i.purchaseOrderId === id);
     const stocks = db.stocks.findMany();
     let totalCUP = 0;
-    let totalMLC = 0;
+    let totalUSD = 0;
 
     poItems.forEach((poi) => {
       db.purchaseOrderItems.update(poi.id, { receivedQty: poi.quantity });
@@ -1009,10 +1025,10 @@ async function startServer() {
       db.stocks.update(matchingStock.id, { quantity: matchingStock.quantity + poi.quantity });
       db.stockMovements.create({ stockId: matchingStock.id, type: "entrada", quantity: poi.quantity, reason: `Recepción Orden Compra ${id}`, userId: userId || req.user!.userId });
       totalCUP += poi.quantity * poi.unitCostCUP;
-      totalMLC += poi.quantity * poi.unitCostMLC;
+      totalUSD += poi.quantity * poi.unitCostUSD;
     });
 
-    db.supplierInvoices.create({ supplierId: po.supplierId, purchaseOrderId: po.id, totalCUP, totalMLC, paidAmountCUP: 0, paidAmountMLC: 0, status: "pendiente" });
+    db.supplierInvoices.create({ supplierId: po.supplierId, purchaseOrderId: po.id, totalCUP, totalUSD, paidAmountCUP: 0, paidAmountUSD: 0, status: "pendiente" });
 
     const entry = db.journalEntries.create({ description: `Recepción Orden de Compra ${id}`, reference: id, status: "posted" });
     db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "1040", debit: totalCUP, credit: 0 });
@@ -1026,15 +1042,15 @@ async function startServer() {
 
   app.post("/api/compras/invoices/:id/pay", authenticate, (req, res) => {
     const { id } = req.params;
-    const { amountCUP, amountMLC, userId } = req.body;
+    const { amountCUP, amountUSD, userId } = req.body;
     const inv = db.supplierInvoices.findMany().find((x) => x.id === id);
     if (!inv) return res.status(404).json({ error: "Factura no encontrada" });
 
     const updatedPaidCUP = inv.paidAmountCUP + (Number(amountCUP) || 0);
-    const updatedPaidMLC = inv.paidAmountMLC + (Number(amountMLC) || 0);
+    const updatedPaidUSD = inv.paidAmountUSD + (Number(amountUSD) || 0);
     const status = (updatedPaidCUP >= inv.totalCUP) ? "pagada" : "pendiente";
 
-    const updated = db.supplierInvoices.update(id, { paidAmountCUP: updatedPaidCUP, paidAmountMLC: updatedPaidMLC, status });
+    const updated = db.supplierInvoices.update(id, { paidAmountCUP: updatedPaidCUP, paidAmountUSD: updatedPaidUSD, status });
 
     const entry = db.journalEntries.create({ description: `Pago Factura Proveedor ${id}`, reference: id, status: "posted" });
     db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "2010", debit: Number(amountCUP) || 0, credit: 0 });
@@ -1315,7 +1331,7 @@ async function startServer() {
     const { month, year } = _req.query;
     const m = month ? Number(month) : new Date().getMonth() + 1;
     const y = year ? Number(year) : new Date().getFullYear();
-    const rate = Number(db.systemSettings.getValue("exchange_rate_mlc", "120"));
+    const rate = Number(db.systemSettings.getValue("exchange_rate_usd", "120"));
 
     const sales = db.sales.findMany();
     const inxs = db.cashRegisterTransactions.findMany();
@@ -1331,14 +1347,14 @@ async function startServer() {
 
     sales.forEach((s) => {
       if (isTargetMonth(s.date) && s.status === "completed") {
-        const mlcConverted = s.grandTotalMLC * rate;
-        reportLines.push({ fecha: s.date.substring(0, 10), concepto: `Ingresos Ventas (Venta POS ${s.id.substring(0, 8)})`, ingreso: s.grandTotalCUP + mlcConverted, gasto: 0 });
+        const usdConverted = s.grandTotalUSD * rate;
+        reportLines.push({ fecha: s.date.substring(0, 10), concepto: `Ingresos Ventas (Venta POS ${s.id.substring(0, 8)})`, ingreso: s.grandTotalCUP + usdConverted, gasto: 0 });
       }
     });
 
     inxs.forEach((t) => {
       if (isTargetMonth(t.date)) {
-        const factor = t.currency === Currency.MLC ? rate : 1;
+        const factor = t.currency === Currency.USD ? rate : 1;
         if (t.type === "income") {
           reportLines.push({ fecha: t.date.substring(0, 10), concepto: `Ingreso Caja: ${t.description}`, ingreso: t.amount * factor, gasto: 0 });
         } else {
@@ -1351,8 +1367,8 @@ async function startServer() {
       const po = inv.purchaseOrderId ? db.purchaseOrders.findMany().find((p) => p.id === inv.purchaseOrderId) : null;
       const refDate = po ? po.createdAt : new Date().toISOString();
       if (isTargetMonth(refDate)) {
-        const mlcConverted = inv.totalMLC * rate;
-        reportLines.push({ fecha: refDate.substring(0, 10), concepto: `Compra Proveedor (Factura ${inv.id.substring(0, 8)})`, ingreso: 0, gasto: inv.totalCUP + mlcConverted });
+        const usdConverted = inv.totalUSD * rate;
+        reportLines.push({ fecha: refDate.substring(0, 10), concepto: `Compra Proveedor (Factura ${inv.id.substring(0, 8)})`, ingreso: 0, gasto: inv.totalCUP + usdConverted });
       }
     });
 

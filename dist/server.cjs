@@ -119,16 +119,16 @@ function initializeDatabase() {
       id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, sku TEXT,
       barcode TEXT, unit_of_measure TEXT DEFAULT 'pieza',
       is_service INTEGER DEFAULT 0, category_id TEXT, tax_id TEXT,
-      price_cup REAL DEFAULT 0, price_mlc REAL DEFAULT 0,
-      cost_cup REAL DEFAULT 0, cost_mlc REAL DEFAULT 0,
+      price_cup REAL DEFAULT 0, price_usd REAL DEFAULT 0,
+      cost_cup REAL DEFAULT 0, cost_usd REAL DEFAULT 0,
       image_url TEXT,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS variants (
       id TEXT PRIMARY KEY, product_id TEXT NOT NULL, name TEXT NOT NULL,
-      sku TEXT, barcode TEXT, price_cup REAL DEFAULT 0, price_mlc REAL DEFAULT 0,
-      cost_cup REAL DEFAULT 0, cost_mlc REAL DEFAULT 0, stock REAL DEFAULT 0
+      sku TEXT, barcode TEXT, price_cup REAL DEFAULT 0, price_usd REAL DEFAULT 0,
+      cost_cup REAL DEFAULT 0, cost_usd REAL DEFAULT 0, stock REAL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS warehouses (
       id TEXT PRIMARY KEY, name TEXT NOT NULL, address TEXT, branch_id TEXT NOT NULL
@@ -164,12 +164,12 @@ function initializeDatabase() {
       id TEXT PRIMARY KEY, purchase_order_id TEXT NOT NULL,
       product_id TEXT NOT NULL, variant_id TEXT,
       quantity REAL DEFAULT 0, unit_cost_cup REAL DEFAULT 0,
-      unit_cost_mlc REAL DEFAULT 0, received_qty REAL DEFAULT 0
+      unit_cost_usd REAL DEFAULT 0, received_qty REAL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS supplier_invoices (
       id TEXT PRIMARY KEY, supplier_id TEXT NOT NULL, purchase_order_id TEXT,
-      total_cup REAL DEFAULT 0, total_mlc REAL DEFAULT 0, due_date TEXT,
-      paid_amount_cup REAL DEFAULT 0, paid_amount_mlc REAL DEFAULT 0,
+      total_cup REAL DEFAULT 0, total_usd REAL DEFAULT 0, due_date TEXT,
+      paid_amount_cup REAL DEFAULT 0, paid_amount_usd REAL DEFAULT 0,
       status TEXT DEFAULT 'pendiente'
     );
     CREATE TABLE IF NOT EXISTS customers (
@@ -179,10 +179,10 @@ function initializeDatabase() {
     );
     CREATE TABLE IF NOT EXISTS sales (
       id TEXT PRIMARY KEY, branch_id TEXT NOT NULL, customer_id TEXT,
-      date TEXT, total_cup REAL DEFAULT 0, total_mlc REAL DEFAULT 0,
-      tax_total_cup REAL DEFAULT 0, tax_total_mlc REAL DEFAULT 0,
+      date TEXT, total_cup REAL DEFAULT 0, total_usd REAL DEFAULT 0,
+      tax_total_cup REAL DEFAULT 0, tax_total_usd REAL DEFAULT 0,
       discount REAL DEFAULT 0, grand_total_cup REAL DEFAULT 0,
-      grand_total_mlc REAL DEFAULT 0, payment_method TEXT,
+      grand_total_usd REAL DEFAULT 0, payment_method TEXT,
       status TEXT DEFAULT 'completed', user_id TEXT,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
@@ -190,7 +190,7 @@ function initializeDatabase() {
     CREATE TABLE IF NOT EXISTS sale_items (
       id TEXT PRIMARY KEY, sale_id TEXT NOT NULL, product_id TEXT NOT NULL,
       variant_id TEXT, quantity REAL DEFAULT 0, unit_price_cup REAL DEFAULT 0,
-      unit_price_mlc REAL DEFAULT 0, tax REAL DEFAULT 0, discount REAL DEFAULT 0
+      unit_price_usd REAL DEFAULT 0, tax REAL DEFAULT 0, discount REAL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS payments (
       id TEXT PRIMARY KEY, sale_id TEXT NOT NULL, method TEXT NOT NULL,
@@ -205,14 +205,14 @@ function initializeDatabase() {
     CREATE TABLE IF NOT EXISTS orders (
       id TEXT PRIMARY KEY, branch_id TEXT NOT NULL, customer_id TEXT,
       order_date TEXT, delivery_date TEXT, status TEXT DEFAULT 'pending',
-      total_cup REAL DEFAULT 0, total_mlc REAL DEFAULT 0,
+      total_cup REAL DEFAULT 0, total_usd REAL DEFAULT 0,
       notes TEXT, delivery_address TEXT, assigned_driver_id TEXT,
       advance_payment REAL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS order_items (
       id TEXT PRIMARY KEY, order_id TEXT NOT NULL, product_id TEXT NOT NULL,
       variant_id TEXT, quantity REAL DEFAULT 0,
-      unit_price_cup REAL DEFAULT 0, unit_price_mlc REAL DEFAULT 0
+      unit_price_cup REAL DEFAULT 0, unit_price_usd REAL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS recipes (
       id TEXT PRIMARY KEY, name TEXT NOT NULL, product_id TEXT NOT NULL,
@@ -364,7 +364,7 @@ function initializeDatabase() {
     created_at: now,
     updated_at: now
   });
-  insert("system_settings", { id: generateId(), key: "exchange_rate_mlc", value: "120" });
+  insert("system_settings", { id: generateId(), key: "exchange_rate_usd", value: "120" });
   insert("system_settings", { id: generateId(), key: "business_name", value: "Nimbo ERP S.R.L." });
   insert("system_settings", { id: generateId(), key: "business_address", value: "La Habana, Cuba" });
   insert("users", { id: generateId(), name: "Administrador Panader\xEDa", email: "admin@bakery.com", password: demoPass, role: "ADMIN" /* ADMIN */, branch_id: bBakery.id, created_at: now, updated_at: now });
@@ -383,15 +383,15 @@ function initializeDatabase() {
   const whClothing = insert("warehouses", { id: generateId(), name: "Almac\xE9n Central Boutique", branch_id: bClothing.id, address: "San Rafael" });
   const whWorkshop = insert("warehouses", { id: generateId(), name: "Almac\xE9n Taller", branch_id: bWorkshop.id, address: "Boyeros" });
   const whGeneral = insert("warehouses", { id: generateId(), name: "Almac\xE9n Central", branch_id: bGeneral.id, address: "Centro Habana" });
-  const pPanSuave = insert("products", { id: generateId(), name: "Pan Suave de Leche", description: "Pan de molde enriquecido con leche fresca", sku: "BAK-PAN-001", barcode: "5901234123", unit_of_measure: "pieza", is_service: 0, category_id: catPanes.id, tax_id: taxIva.id, price_cup: 35, price_mlc: 0.3, cost_cup: 15, cost_mlc: 0.12, created_at: now, updated_at: now });
-  const pPastel = insert("products", { id: generateId(), name: "Pastel de Chocolate", description: "Rico pastel de chocolate de 1 libra", sku: "BAK-PAS-002", barcode: "5901234124", unit_of_measure: "pieza", is_service: 0, category_id: catDulces.id, tax_id: taxIva.id, price_cup: 1200, price_mlc: 10, cost_cup: 450, cost_mlc: 3.75, created_at: now, updated_at: now });
-  const pHarina = insert("products", { id: generateId(), name: "Harina de Trigo", description: "Materia prima para panader\xEDa", sku: "MAT-HAR-001", barcode: "", unit_of_measure: "kg", is_service: 0, category_id: catAlimentos.id, tax_id: taxIva.id, price_cup: 0, price_mlc: 0, cost_cup: 180, cost_mlc: 1.5, created_at: now, updated_at: now });
-  const pAzucar = insert("products", { id: generateId(), name: "Az\xFAcar Refinada", description: "Saco de az\xFAcar", sku: "MAT-AZU-002", barcode: "", unit_of_measure: "kg", is_service: 0, category_id: catAlimentos.id, tax_id: taxIva.id, price_cup: 0, price_mlc: 0, cost_cup: 150, cost_mlc: 1.25, created_at: now, updated_at: now });
-  const pLevadura = insert("products", { id: generateId(), name: "Levadura Seca", description: "Levadura instant\xE1nea", sku: "MAT-LEV-003", barcode: "", unit_of_measure: "kg", is_service: 0, category_id: catAlimentos.id, tax_id: taxIva.id, price_cup: 0, price_mlc: 0, cost_cup: 480, cost_mlc: 4, created_at: now, updated_at: now });
-  const pCamisa = insert("products", { id: generateId(), name: "Camisa de Lino Nimbo", description: "Camisa de vestir 100% lino cubano", sku: "CLO-CAM-001", barcode: "6901123451", unit_of_measure: "pieza", is_service: 0, category_id: catAlimentos.id, tax_id: taxIva.id, price_cup: 2400, price_mlc: 20, cost_cup: 1e3, cost_mlc: 8.3, created_at: now, updated_at: now });
-  const pMesa = insert("products", { id: generateId(), name: "Mesa de Centro R\xFAstica", description: "Mesa de centro fabricada en madera preciosa", sku: "WRK-MES-001", barcode: "", unit_of_measure: "pieza", is_service: 0, category_id: catAlimentos.id, tax_id: taxIva.id, price_cup: 15e3, price_mlc: 125, cost_cup: 7e3, cost_mlc: 58.3, created_at: now, updated_at: now });
-  const varCamisaM = insert("variants", { id: generateId(), product_id: pCamisa.id, name: "Talla M - Blanco", sku: "CLO-CAM-001-M-W", barcode: "690112345101", price_cup: 2400, price_mlc: 20, cost_cup: 1e3, cost_mlc: 8.3, stock: 25 });
-  const varCamisaL = insert("variants", { id: generateId(), product_id: pCamisa.id, name: "Talla L - Blanco", sku: "CLO-CAM-001-L-W", barcode: "690112345102", price_cup: 2500, price_mlc: 21, cost_cup: 1050, cost_mlc: 8.75, stock: 15 });
+  const pPanSuave = insert("products", { id: generateId(), name: "Pan Suave de Leche", description: "Pan de molde enriquecido con leche fresca", sku: "BAK-PAN-001", barcode: "5901234123", unit_of_measure: "pieza", is_service: 0, category_id: catPanes.id, tax_id: taxIva.id, price_cup: 35, price_usd: 0.3, cost_cup: 15, cost_usd: 0.12, created_at: now, updated_at: now });
+  const pPastel = insert("products", { id: generateId(), name: "Pastel de Chocolate", description: "Rico pastel de chocolate de 1 libra", sku: "BAK-PAS-002", barcode: "5901234124", unit_of_measure: "pieza", is_service: 0, category_id: catDulces.id, tax_id: taxIva.id, price_cup: 1200, price_usd: 10, cost_cup: 450, cost_usd: 3.75, created_at: now, updated_at: now });
+  const pHarina = insert("products", { id: generateId(), name: "Harina de Trigo", description: "Materia prima para panader\xEDa", sku: "MAT-HAR-001", barcode: "", unit_of_measure: "kg", is_service: 0, category_id: catAlimentos.id, tax_id: taxIva.id, price_cup: 0, price_usd: 0, cost_cup: 180, cost_usd: 1.5, created_at: now, updated_at: now });
+  const pAzucar = insert("products", { id: generateId(), name: "Az\xFAcar Refinada", description: "Saco de az\xFAcar", sku: "MAT-AZU-002", barcode: "", unit_of_measure: "kg", is_service: 0, category_id: catAlimentos.id, tax_id: taxIva.id, price_cup: 0, price_usd: 0, cost_cup: 150, cost_usd: 1.25, created_at: now, updated_at: now });
+  const pLevadura = insert("products", { id: generateId(), name: "Levadura Seca", description: "Levadura instant\xE1nea", sku: "MAT-LEV-003", barcode: "", unit_of_measure: "kg", is_service: 0, category_id: catAlimentos.id, tax_id: taxIva.id, price_cup: 0, price_usd: 0, cost_cup: 480, cost_usd: 4, created_at: now, updated_at: now });
+  const pCamisa = insert("products", { id: generateId(), name: "Camisa de Lino Nimbo", description: "Camisa de vestir 100% lino cubano", sku: "CLO-CAM-001", barcode: "6901123451", unit_of_measure: "pieza", is_service: 0, category_id: catAlimentos.id, tax_id: taxIva.id, price_cup: 2400, price_usd: 20, cost_cup: 1e3, cost_usd: 8.3, created_at: now, updated_at: now });
+  const pMesa = insert("products", { id: generateId(), name: "Mesa de Centro R\xFAstica", description: "Mesa de centro fabricada en madera preciosa", sku: "WRK-MES-001", barcode: "", unit_of_measure: "pieza", is_service: 0, category_id: catAlimentos.id, tax_id: taxIva.id, price_cup: 15e3, price_usd: 125, cost_cup: 7e3, cost_usd: 58.3, created_at: now, updated_at: now });
+  const varCamisaM = insert("variants", { id: generateId(), product_id: pCamisa.id, name: "Talla M - Blanco", sku: "CLO-CAM-001-M-W", barcode: "690112345101", price_cup: 2400, price_usd: 20, cost_cup: 1e3, cost_usd: 8.3, stock: 25 });
+  const varCamisaL = insert("variants", { id: generateId(), product_id: pCamisa.id, name: "Talla L - Blanco", sku: "CLO-CAM-001-L-W", barcode: "690112345102", price_cup: 2500, price_usd: 21, cost_cup: 1050, cost_usd: 8.75, stock: 15 });
   insert("stocks", { id: generateId(), product_id: pPanSuave.id, warehouse_id: whBakery.id, quantity: 150, min_stock: 30, max_stock: 500 });
   insert("stocks", { id: generateId(), product_id: pPastel.id, warehouse_id: whBakery.id, quantity: 15, min_stock: 5, max_stock: 50 });
   insert("stocks", { id: generateId(), product_id: pHarina.id, warehouse_id: whBakery.id, quantity: 500, min_stock: 100, max_stock: 2e3 });
@@ -419,7 +419,7 @@ function initializeDatabase() {
   insert("attendances", { id: generateId(), employee_id: empYadira.id, date: today, check_in: `${today}T08:15:00.000Z`, check_out: `${today}T17:00:00.000Z`, hours_worked: 7.75 });
   const chartAccounts = [
     ["1010", "1010", "Caja Principal CUP", "asset"],
-    ["1020", "1020", "Caja Principal MLC", "asset"],
+    ["1020", "1020", "Caja Principal USD", "asset"],
     ["1030", "1030", "Cuentas por Cobrar Clientes", "asset"],
     ["1040", "1040", "Inventario de Mercanc\xEDas", "asset"],
     ["1050", "1050", "Inventario de Materias Primas", "asset"],
@@ -434,9 +434,9 @@ function initializeDatabase() {
     insert("accounts", { id, code, name, type });
   }
   insert("cash_register_sessions", { id: generateId(), branch_id: bBakery.id, user_id: "admin_bakery_placeholder", initial_cash: 5e3, status: "open", start_date: now });
-  const sale1 = insert("sales", { id: generateId(), branch_id: bBakery.id, customer_id: "cust_pedro", date: new Date(Date.now() - 864e5).toISOString(), total_cup: 1235, total_mlc: 10.3, tax_total_cup: 120, tax_total_mlc: 1, discount: 0, grand_total_cup: 1355, grand_total_mlc: 11.3, payment_method: "Transferm\xF3vil", status: "completed", user_id: "admin_bakery_placeholder", created_at: now, updated_at: now });
-  insert("sale_items", { id: generateId(), sale_id: sale1.id, product_id: pPastel.id, quantity: 1, unit_price_cup: 1200, unit_price_mlc: 10, tax: 120, discount: 0 });
-  insert("sale_items", { id: generateId(), sale_id: sale1.id, product_id: pPanSuave.id, quantity: 1, unit_price_cup: 35, unit_price_mlc: 0.3, tax: 0, discount: 0 });
+  const sale1 = insert("sales", { id: generateId(), branch_id: bBakery.id, customer_id: "cust_pedro", date: new Date(Date.now() - 864e5).toISOString(), total_cup: 1235, total_usd: 10.3, tax_total_cup: 120, tax_total_usd: 1, discount: 0, grand_total_cup: 1355, grand_total_usd: 11.3, payment_method: "Transferm\xF3vil", status: "completed", user_id: "admin_bakery_placeholder", created_at: now, updated_at: now });
+  insert("sale_items", { id: generateId(), sale_id: sale1.id, product_id: pPastel.id, quantity: 1, unit_price_cup: 1200, unit_price_usd: 10, tax: 120, discount: 0 });
+  insert("sale_items", { id: generateId(), sale_id: sale1.id, product_id: pPanSuave.id, quantity: 1, unit_price_cup: 35, unit_price_usd: 0.3, tax: 0, discount: 0 });
   insert("payments", { id: generateId(), sale_id: sale1.id, method: "Transferm\xF3vil", currency: "CUP", amount: 1355, reference: "TM-482918" });
   const je1 = insert("journal_entries", { id: generateId(), description: "Venta Factura " + sale1.id, reference: sale1.id, status: "posted", date: now });
   insert("journal_entry_lines", { id: generateId(), journal_entry_id: je1.id, account_id: "1010", debit: 1355, credit: 0 });
@@ -551,7 +551,7 @@ var db = {
     create: (data) => {
       const id = generateId();
       const now = (/* @__PURE__ */ new Date()).toISOString();
-      getDb().prepare(`INSERT INTO products (id, name, description, sku, barcode, unit_of_measure, is_service, category_id, tax_id, price_cup, price_mlc, cost_cup, cost_mlc, image_url, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.name, data.description || "", data.sku || "", data.barcode || "", data.unitOfMeasure || "pieza", data.isService ? 1 : 0, data.categoryId || null, data.taxId || null, data.priceCUP || 0, data.priceMLC || 0, data.costCUP || 0, data.costMLC || 0, data.imageUrl || "", now, now);
+      getDb().prepare(`INSERT INTO products (id, name, description, sku, barcode, unit_of_measure, is_service, category_id, tax_id, price_cup, price_usd, cost_cup, cost_usd, image_url, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.name, data.description || "", data.sku || "", data.barcode || "", data.unitOfMeasure || "pieza", data.isService ? 1 : 0, data.categoryId || null, data.taxId || null, data.priceCUP || 0, data.priceUSD || 0, data.costCUP || 0, data.costUSD || 0, data.imageUrl || "", now, now);
       return { id, ...data, createdAt: now, updatedAt: now };
     },
     update: (id, data) => {
@@ -580,7 +580,7 @@ var db = {
     findByProductId: (productId) => rowsToCamel(allRows(getDb().prepare("SELECT * FROM variants WHERE product_id = ?"), [productId])),
     create: (data) => {
       const id = generateId();
-      getDb().prepare(`INSERT INTO variants (id, product_id, name, sku, barcode, price_cup, price_mlc, cost_cup, cost_mlc, stock) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.productId, data.name, data.sku || "", data.barcode || "", data.priceCUP || 0, data.priceMLC || 0, data.costCUP || 0, data.costMLC || 0, data.stock || 0);
+      getDb().prepare(`INSERT INTO variants (id, product_id, name, sku, barcode, price_cup, price_usd, cost_cup, cost_usd, stock) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.productId, data.name, data.sku || "", data.barcode || "", data.priceCUP || 0, data.priceUSD || 0, data.costCUP || 0, data.costUSD || 0, data.stock || 0);
       return { id, ...data };
     },
     update: (id, data) => {
@@ -704,7 +704,7 @@ var db = {
     findMany: () => rowsToCamel(allRows(getDb().prepare("SELECT * FROM purchase_order_items"))),
     create: (data) => {
       const id = generateId();
-      getDb().prepare(`INSERT INTO purchase_order_items (id, purchase_order_id, product_id, variant_id, quantity, unit_cost_cup, unit_cost_mlc, received_qty) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.purchaseOrderId, data.productId, data.variantId || null, data.quantity || 0, data.unitCostCUP || 0, data.unitCostMLC || 0, data.receivedQty || 0);
+      getDb().prepare(`INSERT INTO purchase_order_items (id, purchase_order_id, product_id, variant_id, quantity, unit_cost_cup, unit_cost_usd, received_qty) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.purchaseOrderId, data.productId, data.variantId || null, data.quantity || 0, data.unitCostCUP || 0, data.unitCostUSD || 0, data.receivedQty || 0);
       return { id, ...data };
     },
     update: (id, data) => {
@@ -723,7 +723,7 @@ var db = {
     findMany: () => rowsToCamel(allRows(getDb().prepare("SELECT * FROM supplier_invoices"))),
     create: (data) => {
       const id = generateId();
-      getDb().prepare(`INSERT INTO supplier_invoices (id, supplier_id, purchase_order_id, total_cup, total_mlc, paid_amount_cup, paid_amount_mlc, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.supplierId, data.purchaseOrderId || null, data.totalCUP || 0, data.totalMLC || 0, data.paidAmountCUP || 0, data.paidAmountMLC || 0, data.status || "pendiente");
+      getDb().prepare(`INSERT INTO supplier_invoices (id, supplier_id, purchase_order_id, total_cup, total_usd, paid_amount_cup, paid_amount_usd, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.supplierId, data.purchaseOrderId || null, data.totalCUP || 0, data.totalUSD || 0, data.paidAmountCUP || 0, data.paidAmountUSD || 0, data.status || "pendiente");
       return { id, ...data };
     },
     update: (id, data) => {
@@ -764,7 +764,7 @@ var db = {
     create: (data) => {
       const id = generateId();
       const now = (/* @__PURE__ */ new Date()).toISOString();
-      getDb().prepare(`INSERT INTO sales (id, branch_id, customer_id, date, total_cup, total_mlc, tax_total_cup, tax_total_mlc, discount, grand_total_cup, grand_total_mlc, payment_method, status, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.branchId, data.customerId || null, data.date || now, data.totalCUP || 0, data.totalMLC || 0, data.taxTotalCUP || 0, data.taxTotalMLC || 0, data.discount || 0, data.grandTotalCUP || 0, data.grandTotalMLC || 0, data.paymentMethod || "efectivo", data.status || "completed", data.userId || "sistema", now, now);
+      getDb().prepare(`INSERT INTO sales (id, branch_id, customer_id, date, total_cup, total_usd, tax_total_cup, tax_total_usd, discount, grand_total_cup, grand_total_usd, payment_method, status, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.branchId, data.customerId || null, data.date || now, data.totalCUP || 0, data.totalUSD || 0, data.taxTotalCUP || 0, data.taxTotalUSD || 0, data.discount || 0, data.grandTotalCUP || 0, data.grandTotalUSD || 0, data.paymentMethod || "efectivo", data.status || "completed", data.userId || "sistema", now, now);
       return { id, ...data, createdAt: now, updatedAt: now };
     },
     update: (id, data) => {
@@ -783,7 +783,7 @@ var db = {
     findMany: () => rowsToCamel(allRows(getDb().prepare("SELECT * FROM sale_items"))),
     create: (data) => {
       const id = generateId();
-      getDb().prepare(`INSERT INTO sale_items (id, sale_id, product_id, variant_id, quantity, unit_price_cup, unit_price_mlc, tax, discount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.saleId, data.productId, data.variantId || null, data.quantity || 0, data.unitPriceCUP || 0, data.unitPriceMLC || 0, data.tax || 0, data.discount || 0);
+      getDb().prepare(`INSERT INTO sale_items (id, sale_id, product_id, variant_id, quantity, unit_price_cup, unit_price_usd, tax, discount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.saleId, data.productId, data.variantId || null, data.quantity || 0, data.unitPriceCUP || 0, data.unitPriceUSD || 0, data.tax || 0, data.discount || 0);
       return { id, ...data };
     }
   },
@@ -822,7 +822,7 @@ var db = {
     create: (data) => {
       const id = generateId();
       const now = (/* @__PURE__ */ new Date()).toISOString();
-      getDb().prepare(`INSERT INTO orders (id, branch_id, customer_id, order_date, delivery_date, status, total_cup, total_mlc, notes, delivery_address, assigned_driver_id, advance_payment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.branchId, data.customerId || null, now, data.deliveryDate || null, data.status || "pending", data.totalCUP || 0, data.totalMLC || 0, data.notes || "", data.deliveryAddress || "", data.assignedDriverId || "", data.advancePayment || 0);
+      getDb().prepare(`INSERT INTO orders (id, branch_id, customer_id, order_date, delivery_date, status, total_cup, total_usd, notes, delivery_address, assigned_driver_id, advance_payment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.branchId, data.customerId || null, now, data.deliveryDate || null, data.status || "pending", data.totalCUP || 0, data.totalUSD || 0, data.notes || "", data.deliveryAddress || "", data.assignedDriverId || "", data.advancePayment || 0);
       return { id, ...data, orderDate: now };
     },
     update: (id, data) => {
@@ -841,7 +841,7 @@ var db = {
     findMany: () => rowsToCamel(allRows(getDb().prepare("SELECT * FROM order_items"))),
     create: (data) => {
       const id = generateId();
-      getDb().prepare(`INSERT INTO order_items (id, order_id, product_id, variant_id, quantity, unit_price_cup, unit_price_mlc) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, data.orderId, data.productId, data.variantId || null, data.quantity || 0, data.unitPriceCUP || 0, data.unitPriceMLC || 0);
+      getDb().prepare(`INSERT INTO order_items (id, order_id, product_id, variant_id, quantity, unit_price_cup, unit_price_usd) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, data.orderId, data.productId, data.variantId || null, data.quantity || 0, data.unitPriceCUP || 0, data.unitPriceUSD || 0);
       return { id, ...data };
     }
   },
@@ -1095,9 +1095,9 @@ var productSchema = import_zod.z.object({
   categoryId: import_zod.z.string().optional(),
   taxId: import_zod.z.string().optional(),
   priceCUP: import_zod.z.number().optional(),
-  priceMLC: import_zod.z.number().optional(),
+  priceUSD: import_zod.z.number().optional(),
   costCUP: import_zod.z.number().optional(),
-  costMLC: import_zod.z.number().optional(),
+  costUSD: import_zod.z.number().optional(),
   imageUrl: import_zod.z.string().optional(),
   variants: import_zod.z.array(import_zod.z.any()).optional(),
   userId: import_zod.z.string().optional()
@@ -1110,17 +1110,17 @@ var saleSchema = import_zod.z.object({
     variantId: import_zod.z.string().optional(),
     quantity: import_zod.z.number().positive(),
     priceCUP: import_zod.z.number().optional(),
-    priceMLC: import_zod.z.number().optional(),
+    priceUSD: import_zod.z.number().optional(),
     tax: import_zod.z.number().optional(),
     discount: import_zod.z.number().optional()
   })).min(1, "Debe haber al menos un producto"),
   totalCUP: import_zod.z.number().optional(),
-  totalMLC: import_zod.z.number().optional(),
+  totalUSD: import_zod.z.number().optional(),
   taxTotalCUP: import_zod.z.number().optional(),
-  taxTotalMLC: import_zod.z.number().optional(),
+  taxTotalUSD: import_zod.z.number().optional(),
   discount: import_zod.z.number().optional(),
   grandTotalCUP: import_zod.z.number().optional(),
-  grandTotalMLC: import_zod.z.number().optional(),
+  grandTotalUSD: import_zod.z.number().optional(),
   paymentMethod: import_zod.z.string().optional(),
   payments: import_zod.z.array(import_zod.z.any()).optional(),
   userId: import_zod.z.string().optional(),
@@ -1139,6 +1139,20 @@ async function startServer() {
   }));
   app.use(import_express.default.json({ limit: "10mb" }));
   app.use((0, import_cookie_parser.default)());
+  if (process.env.SITE_USERNAME && process.env.SITE_PASSWORD) {
+    app.use((req, res, next) => {
+      const auth = req.headers.authorization;
+      if (auth && auth.startsWith("Basic ")) {
+        const decoded = Buffer.from(auth.slice(6), "base64").toString();
+        const [user, pass] = decoded.split(":");
+        if (user === process.env.SITE_USERNAME && pass === process.env.SITE_PASSWORD) {
+          return next();
+        }
+      }
+      res.setHeader("WWW-Authenticate", 'Basic realm="Nimbo ERP"');
+      res.status(401).send("Acceso restringido");
+    });
+  }
   const authLimiter = (0, import_express_rate_limit.default)({
     windowMs: 15 * 60 * 1e3,
     max: 20,
@@ -1394,9 +1408,9 @@ async function startServer() {
       categoryId,
       taxId,
       priceCUP,
-      priceMLC,
+      priceUSD,
       costCUP,
-      costMLC,
+      costUSD,
       imageUrl,
       variants,
       userId
@@ -1411,9 +1425,9 @@ async function startServer() {
       categoryId: categoryId || void 0,
       taxId: taxId || void 0,
       priceCUP: Number(priceCUP) || 0,
-      priceMLC: Number(priceMLC) || 0,
+      priceUSD: Number(priceUSD) || 0,
       costCUP: Number(costCUP) || 0,
-      costMLC: Number(costMLC) || 0,
+      costUSD: Number(costUSD) || 0,
       imageUrl: imageUrl || ""
     });
     if (variants && Array.isArray(variants)) {
@@ -1424,9 +1438,9 @@ async function startServer() {
           sku: v.sku || "",
           barcode: v.barcode || "",
           priceCUP: Number(v.priceCUP) || 0,
-          priceMLC: Number(v.priceMLC) || 0,
+          priceUSD: Number(v.priceUSD) || 0,
           costCUP: Number(v.costCUP) || 0,
-          costMLC: Number(v.costMLC) || 0,
+          costUSD: Number(v.costUSD) || 0,
           stock: Number(v.stock) || 0
         });
       });
@@ -1471,9 +1485,9 @@ async function startServer() {
       categoryId,
       taxId,
       priceCUP,
-      priceMLC,
+      priceUSD,
       costCUP,
-      costMLC,
+      costUSD,
       imageUrl,
       variants,
       userId
@@ -1488,9 +1502,9 @@ async function startServer() {
       categoryId,
       taxId,
       priceCUP: Number(priceCUP) || 0,
-      priceMLC: Number(priceMLC) || 0,
+      priceUSD: Number(priceUSD) || 0,
       costCUP: Number(costCUP) || 0,
-      costMLC: Number(costMLC) || 0,
+      costUSD: Number(costUSD) || 0,
       imageUrl
     });
     if (!updated) {
@@ -1505,9 +1519,9 @@ async function startServer() {
           sku: v.sku || "",
           barcode: v.barcode || "",
           priceCUP: Number(v.priceCUP) || 0,
-          priceMLC: Number(v.priceMLC) || 0,
+          priceUSD: Number(v.priceUSD) || 0,
           costCUP: Number(v.costCUP) || 0,
-          costMLC: Number(v.costMLC) || 0,
+          costUSD: Number(v.costUSD) || 0,
           stock: Number(v.stock) || 0
         });
       });
@@ -1676,12 +1690,12 @@ async function startServer() {
       customerId,
       items,
       totalCUP,
-      totalMLC,
+      totalUSD,
       taxTotalCUP,
-      taxTotalMLC,
+      taxTotalUSD,
       discount,
       grandTotalCUP,
-      grandTotalMLC,
+      grandTotalUSD,
       paymentMethod,
       payments,
       userId,
@@ -1693,12 +1707,12 @@ async function startServer() {
       customerId: customerId || void 0,
       date: (/* @__PURE__ */ new Date()).toISOString(),
       totalCUP: Number(totalCUP) || 0,
-      totalMLC: Number(totalMLC) || 0,
+      totalUSD: Number(totalUSD) || 0,
       taxTotalCUP: Number(taxTotalCUP) || 0,
-      taxTotalMLC: Number(taxTotalMLC) || 0,
+      taxTotalUSD: Number(taxTotalUSD) || 0,
       discount: Number(discount) || 0,
       grandTotalCUP: Number(grandTotalCUP) || 0,
-      grandTotalMLC: Number(grandTotalMLC) || 0,
+      grandTotalUSD: Number(grandTotalUSD) || 0,
       paymentMethod: paymentMethod || "efectivo",
       status: "completed",
       userId: userId || req.user.userId
@@ -1712,7 +1726,7 @@ async function startServer() {
         variantId: item.variantId || void 0,
         quantity: Number(item.quantity),
         unitPriceCUP: Number(item.priceCUP) || 0,
-        unitPriceMLC: Number(item.priceMLC) || 0,
+        unitPriceUSD: Number(item.priceUSD) || 0,
         tax: Number(item.tax) || 0,
         discount: Number(item.discount) || 0
       });
@@ -1746,8 +1760,8 @@ async function startServer() {
       db.payments.create({
         saleId: sale.id,
         method: paymentMethod || "efectivo",
-        currency: (grandTotalMLC || 0) > 0 ? "MLC" /* MLC */ : "CUP" /* CUP */,
-        amount: (grandTotalMLC || 0) > 0 ? grandTotalMLC || 0 : grandTotalCUP || 0,
+        currency: (grandTotalUSD || 0) > 0 ? "USD" /* USD */ : "CUP" /* CUP */,
+        amount: (grandTotalUSD || 0) > 0 ? grandTotalUSD || 0 : grandTotalCUP || 0,
         reference: paymentMethod !== "efectivo" ? `REF-${Math.floor(Math.random() * 9e5) + 1e5}` : void 0
       });
     }
@@ -1828,14 +1842,14 @@ async function startServer() {
     return res.json(detailed);
   });
   app.post("/api/orders", (req, res) => {
-    const { branchId, customerId, items, deliveryDate, totalCUP, totalMLC, notes, deliveryAddress, assignedDriverId, advancePayment } = req.body;
+    const { branchId, customerId, items, deliveryDate, totalCUP, totalUSD, notes, deliveryAddress, assignedDriverId, advancePayment } = req.body;
     const order = db.orders.create({
       branchId,
       customerId,
       deliveryDate,
       status: "pending",
       totalCUP: Number(totalCUP) || 0,
-      totalMLC: Number(totalMLC) || 0,
+      totalUSD: Number(totalUSD) || 0,
       notes: notes || "",
       deliveryAddress: deliveryAddress || "",
       assignedDriverId: assignedDriverId || "",
@@ -1849,7 +1863,7 @@ async function startServer() {
           variantId: item.variantId || void 0,
           quantity: Number(item.quantity),
           unitPriceCUP: Number(item.priceCUP) || 0,
-          unitPriceMLC: Number(item.priceMLC) || 0
+          unitPriceUSD: Number(item.priceUSD) || 0
         });
       });
     }
@@ -1898,7 +1912,7 @@ async function startServer() {
           variantId: item.variantId || void 0,
           quantity: Number(item.quantity),
           unitCostCUP: Number(item.costCUP) || 0,
-          unitCostMLC: Number(item.costMLC) || 0,
+          unitCostUSD: Number(item.costUSD) || 0,
           receivedQty: 0
         });
       });
@@ -1913,7 +1927,7 @@ async function startServer() {
     const poItems = db.purchaseOrderItems.findMany().filter((i) => i.purchaseOrderId === id);
     const stocks = db.stocks.findMany();
     let totalCUP = 0;
-    let totalMLC = 0;
+    let totalUSD = 0;
     poItems.forEach((poi) => {
       db.purchaseOrderItems.update(poi.id, { receivedQty: poi.quantity });
       let matchingStock = stocks.find((s) => s.warehouseId === po.warehouseId && s.productId === poi.productId && (!poi.variantId || s.variantId === poi.variantId));
@@ -1923,9 +1937,9 @@ async function startServer() {
       db.stocks.update(matchingStock.id, { quantity: matchingStock.quantity + poi.quantity });
       db.stockMovements.create({ stockId: matchingStock.id, type: "entrada", quantity: poi.quantity, reason: `Recepci\xF3n Orden Compra ${id}`, userId: userId || req.user.userId });
       totalCUP += poi.quantity * poi.unitCostCUP;
-      totalMLC += poi.quantity * poi.unitCostMLC;
+      totalUSD += poi.quantity * poi.unitCostUSD;
     });
-    db.supplierInvoices.create({ supplierId: po.supplierId, purchaseOrderId: po.id, totalCUP, totalMLC, paidAmountCUP: 0, paidAmountMLC: 0, status: "pendiente" });
+    db.supplierInvoices.create({ supplierId: po.supplierId, purchaseOrderId: po.id, totalCUP, totalUSD, paidAmountCUP: 0, paidAmountUSD: 0, status: "pendiente" });
     const entry = db.journalEntries.create({ description: `Recepci\xF3n Orden de Compra ${id}`, reference: id, status: "posted" });
     db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "1040", debit: totalCUP, credit: 0 });
     db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "2010", debit: 0, credit: totalCUP });
@@ -1935,13 +1949,13 @@ async function startServer() {
   });
   app.post("/api/compras/invoices/:id/pay", authenticate, (req, res) => {
     const { id } = req.params;
-    const { amountCUP, amountMLC, userId } = req.body;
+    const { amountCUP, amountUSD, userId } = req.body;
     const inv = db.supplierInvoices.findMany().find((x) => x.id === id);
     if (!inv) return res.status(404).json({ error: "Factura no encontrada" });
     const updatedPaidCUP = inv.paidAmountCUP + (Number(amountCUP) || 0);
-    const updatedPaidMLC = inv.paidAmountMLC + (Number(amountMLC) || 0);
+    const updatedPaidUSD = inv.paidAmountUSD + (Number(amountUSD) || 0);
     const status = updatedPaidCUP >= inv.totalCUP ? "pagada" : "pendiente";
-    const updated = db.supplierInvoices.update(id, { paidAmountCUP: updatedPaidCUP, paidAmountMLC: updatedPaidMLC, status });
+    const updated = db.supplierInvoices.update(id, { paidAmountCUP: updatedPaidCUP, paidAmountUSD: updatedPaidUSD, status });
     const entry = db.journalEntries.create({ description: `Pago Factura Proveedor ${id}`, reference: id, status: "posted" });
     db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "2010", debit: Number(amountCUP) || 0, credit: 0 });
     db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "1010", debit: 0, credit: Number(amountCUP) || 0 });
@@ -2188,7 +2202,7 @@ async function startServer() {
     const { month, year } = _req.query;
     const m = month ? Number(month) : (/* @__PURE__ */ new Date()).getMonth() + 1;
     const y = year ? Number(year) : (/* @__PURE__ */ new Date()).getFullYear();
-    const rate = Number(db.systemSettings.getValue("exchange_rate_mlc", "120"));
+    const rate = Number(db.systemSettings.getValue("exchange_rate_usd", "120"));
     const sales = db.sales.findMany();
     const inxs = db.cashRegisterTransactions.findMany();
     const pDetails = db.payrollDetails.findMany();
@@ -2200,13 +2214,13 @@ async function startServer() {
     };
     sales.forEach((s) => {
       if (isTargetMonth(s.date) && s.status === "completed") {
-        const mlcConverted = s.grandTotalMLC * rate;
-        reportLines.push({ fecha: s.date.substring(0, 10), concepto: `Ingresos Ventas (Venta POS ${s.id.substring(0, 8)})`, ingreso: s.grandTotalCUP + mlcConverted, gasto: 0 });
+        const usdConverted = s.grandTotalUSD * rate;
+        reportLines.push({ fecha: s.date.substring(0, 10), concepto: `Ingresos Ventas (Venta POS ${s.id.substring(0, 8)})`, ingreso: s.grandTotalCUP + usdConverted, gasto: 0 });
       }
     });
     inxs.forEach((t) => {
       if (isTargetMonth(t.date)) {
-        const factor = t.currency === "MLC" /* MLC */ ? rate : 1;
+        const factor = t.currency === "USD" /* USD */ ? rate : 1;
         if (t.type === "income") {
           reportLines.push({ fecha: t.date.substring(0, 10), concepto: `Ingreso Caja: ${t.description}`, ingreso: t.amount * factor, gasto: 0 });
         } else {
@@ -2218,8 +2232,8 @@ async function startServer() {
       const po = inv.purchaseOrderId ? db.purchaseOrders.findMany().find((p) => p.id === inv.purchaseOrderId) : null;
       const refDate = po ? po.createdAt : (/* @__PURE__ */ new Date()).toISOString();
       if (isTargetMonth(refDate)) {
-        const mlcConverted = inv.totalMLC * rate;
-        reportLines.push({ fecha: refDate.substring(0, 10), concepto: `Compra Proveedor (Factura ${inv.id.substring(0, 8)})`, ingreso: 0, gasto: inv.totalCUP + mlcConverted });
+        const usdConverted = inv.totalUSD * rate;
+        reportLines.push({ fecha: refDate.substring(0, 10), concepto: `Compra Proveedor (Factura ${inv.id.substring(0, 8)})`, ingreso: 0, gasto: inv.totalCUP + usdConverted });
       }
     });
     pDetails.forEach((d) => {

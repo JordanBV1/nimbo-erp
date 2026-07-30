@@ -99,16 +99,16 @@ export function initializeDatabase() {
       id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, sku TEXT,
       barcode TEXT, unit_of_measure TEXT DEFAULT 'pieza',
       is_service INTEGER DEFAULT 0, category_id TEXT, tax_id TEXT,
-      price_cup REAL DEFAULT 0, price_mlc REAL DEFAULT 0,
-      cost_cup REAL DEFAULT 0, cost_mlc REAL DEFAULT 0,
+      price_cup REAL DEFAULT 0, price_usd REAL DEFAULT 0,
+      cost_cup REAL DEFAULT 0, cost_usd REAL DEFAULT 0,
       image_url TEXT,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS variants (
       id TEXT PRIMARY KEY, product_id TEXT NOT NULL, name TEXT NOT NULL,
-      sku TEXT, barcode TEXT, price_cup REAL DEFAULT 0, price_mlc REAL DEFAULT 0,
-      cost_cup REAL DEFAULT 0, cost_mlc REAL DEFAULT 0, stock REAL DEFAULT 0
+      sku TEXT, barcode TEXT, price_cup REAL DEFAULT 0, price_usd REAL DEFAULT 0,
+      cost_cup REAL DEFAULT 0, cost_usd REAL DEFAULT 0, stock REAL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS warehouses (
       id TEXT PRIMARY KEY, name TEXT NOT NULL, address TEXT, branch_id TEXT NOT NULL
@@ -144,12 +144,12 @@ export function initializeDatabase() {
       id TEXT PRIMARY KEY, purchase_order_id TEXT NOT NULL,
       product_id TEXT NOT NULL, variant_id TEXT,
       quantity REAL DEFAULT 0, unit_cost_cup REAL DEFAULT 0,
-      unit_cost_mlc REAL DEFAULT 0, received_qty REAL DEFAULT 0
+      unit_cost_usd REAL DEFAULT 0, received_qty REAL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS supplier_invoices (
       id TEXT PRIMARY KEY, supplier_id TEXT NOT NULL, purchase_order_id TEXT,
-      total_cup REAL DEFAULT 0, total_mlc REAL DEFAULT 0, due_date TEXT,
-      paid_amount_cup REAL DEFAULT 0, paid_amount_mlc REAL DEFAULT 0,
+      total_cup REAL DEFAULT 0, total_usd REAL DEFAULT 0, due_date TEXT,
+      paid_amount_cup REAL DEFAULT 0, paid_amount_usd REAL DEFAULT 0,
       status TEXT DEFAULT 'pendiente'
     );
     CREATE TABLE IF NOT EXISTS customers (
@@ -159,10 +159,10 @@ export function initializeDatabase() {
     );
     CREATE TABLE IF NOT EXISTS sales (
       id TEXT PRIMARY KEY, branch_id TEXT NOT NULL, customer_id TEXT,
-      date TEXT, total_cup REAL DEFAULT 0, total_mlc REAL DEFAULT 0,
-      tax_total_cup REAL DEFAULT 0, tax_total_mlc REAL DEFAULT 0,
+      date TEXT, total_cup REAL DEFAULT 0, total_usd REAL DEFAULT 0,
+      tax_total_cup REAL DEFAULT 0, tax_total_usd REAL DEFAULT 0,
       discount REAL DEFAULT 0, grand_total_cup REAL DEFAULT 0,
-      grand_total_mlc REAL DEFAULT 0, payment_method TEXT,
+      grand_total_usd REAL DEFAULT 0, payment_method TEXT,
       status TEXT DEFAULT 'completed', user_id TEXT,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
@@ -170,7 +170,7 @@ export function initializeDatabase() {
     CREATE TABLE IF NOT EXISTS sale_items (
       id TEXT PRIMARY KEY, sale_id TEXT NOT NULL, product_id TEXT NOT NULL,
       variant_id TEXT, quantity REAL DEFAULT 0, unit_price_cup REAL DEFAULT 0,
-      unit_price_mlc REAL DEFAULT 0, tax REAL DEFAULT 0, discount REAL DEFAULT 0
+      unit_price_usd REAL DEFAULT 0, tax REAL DEFAULT 0, discount REAL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS payments (
       id TEXT PRIMARY KEY, sale_id TEXT NOT NULL, method TEXT NOT NULL,
@@ -185,14 +185,14 @@ export function initializeDatabase() {
     CREATE TABLE IF NOT EXISTS orders (
       id TEXT PRIMARY KEY, branch_id TEXT NOT NULL, customer_id TEXT,
       order_date TEXT, delivery_date TEXT, status TEXT DEFAULT 'pending',
-      total_cup REAL DEFAULT 0, total_mlc REAL DEFAULT 0,
+      total_cup REAL DEFAULT 0, total_usd REAL DEFAULT 0,
       notes TEXT, delivery_address TEXT, assigned_driver_id TEXT,
       advance_payment REAL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS order_items (
       id TEXT PRIMARY KEY, order_id TEXT NOT NULL, product_id TEXT NOT NULL,
       variant_id TEXT, quantity REAL DEFAULT 0,
-      unit_price_cup REAL DEFAULT 0, unit_price_mlc REAL DEFAULT 0
+      unit_price_cup REAL DEFAULT 0, unit_price_usd REAL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS recipes (
       id TEXT PRIMARY KEY, name TEXT NOT NULL, product_id TEXT NOT NULL,
@@ -326,7 +326,7 @@ export function initializeDatabase() {
     business_type: BusinessType.GENERAL, created_at: now, updated_at: now,
   });
 
-  insert("system_settings", { id: generateId(), key: "exchange_rate_mlc", value: "120" });
+  insert("system_settings", { id: generateId(), key: "exchange_rate_usd", value: "120" });
   insert("system_settings", { id: generateId(), key: "business_name", value: "Nimbo ERP S.R.L." });
   insert("system_settings", { id: generateId(), key: "business_address", value: "La Habana, Cuba" });
 
@@ -350,16 +350,16 @@ export function initializeDatabase() {
   const whWorkshop = insert("warehouses", { id: generateId(), name: "Almacén Taller", branch_id: bWorkshop.id, address: "Boyeros" });
   const whGeneral = insert("warehouses", { id: generateId(), name: "Almacén Central", branch_id: bGeneral.id, address: "Centro Habana" });
 
-  const pPanSuave = insert("products", { id: generateId(), name: "Pan Suave de Leche", description: "Pan de molde enriquecido con leche fresca", sku: "BAK-PAN-001", barcode: "5901234123", unit_of_measure: "pieza", is_service: 0, category_id: catPanes.id, tax_id: taxIva.id, price_cup: 35, price_mlc: 0.3, cost_cup: 15, cost_mlc: 0.12, created_at: now, updated_at: now });
-  const pPastel = insert("products", { id: generateId(), name: "Pastel de Chocolate", description: "Rico pastel de chocolate de 1 libra", sku: "BAK-PAS-002", barcode: "5901234124", unit_of_measure: "pieza", is_service: 0, category_id: catDulces.id, tax_id: taxIva.id, price_cup: 1200, price_mlc: 10, cost_cup: 450, cost_mlc: 3.75, created_at: now, updated_at: now });
-  const pHarina = insert("products", { id: generateId(), name: "Harina de Trigo", description: "Materia prima para panadería", sku: "MAT-HAR-001", barcode: "", unit_of_measure: "kg", is_service: 0, category_id: catAlimentos.id, tax_id: taxIva.id, price_cup: 0, price_mlc: 0, cost_cup: 180, cost_mlc: 1.5, created_at: now, updated_at: now });
-  const pAzucar = insert("products", { id: generateId(), name: "Azúcar Refinada", description: "Saco de azúcar", sku: "MAT-AZU-002", barcode: "", unit_of_measure: "kg", is_service: 0, category_id: catAlimentos.id, tax_id: taxIva.id, price_cup: 0, price_mlc: 0, cost_cup: 150, cost_mlc: 1.25, created_at: now, updated_at: now });
-  const pLevadura = insert("products", { id: generateId(), name: "Levadura Seca", description: "Levadura instantánea", sku: "MAT-LEV-003", barcode: "", unit_of_measure: "kg", is_service: 0, category_id: catAlimentos.id, tax_id: taxIva.id, price_cup: 0, price_mlc: 0, cost_cup: 480, cost_mlc: 4, created_at: now, updated_at: now });
-  const pCamisa = insert("products", { id: generateId(), name: "Camisa de Lino Nimbo", description: "Camisa de vestir 100% lino cubano", sku: "CLO-CAM-001", barcode: "6901123451", unit_of_measure: "pieza", is_service: 0, category_id: catAlimentos.id, tax_id: taxIva.id, price_cup: 2400, price_mlc: 20, cost_cup: 1000, cost_mlc: 8.3, created_at: now, updated_at: now });
-  const pMesa = insert("products", { id: generateId(), name: "Mesa de Centro Rústica", description: "Mesa de centro fabricada en madera preciosa", sku: "WRK-MES-001", barcode: "", unit_of_measure: "pieza", is_service: 0, category_id: catAlimentos.id, tax_id: taxIva.id, price_cup: 15000, price_mlc: 125, cost_cup: 7000, cost_mlc: 58.3, created_at: now, updated_at: now });
+  const pPanSuave = insert("products", { id: generateId(), name: "Pan Suave de Leche", description: "Pan de molde enriquecido con leche fresca", sku: "BAK-PAN-001", barcode: "5901234123", unit_of_measure: "pieza", is_service: 0, category_id: catPanes.id, tax_id: taxIva.id, price_cup: 35, price_usd: 0.3, cost_cup: 15, cost_usd: 0.12, created_at: now, updated_at: now });
+  const pPastel = insert("products", { id: generateId(), name: "Pastel de Chocolate", description: "Rico pastel de chocolate de 1 libra", sku: "BAK-PAS-002", barcode: "5901234124", unit_of_measure: "pieza", is_service: 0, category_id: catDulces.id, tax_id: taxIva.id, price_cup: 1200, price_usd: 10, cost_cup: 450, cost_usd: 3.75, created_at: now, updated_at: now });
+  const pHarina = insert("products", { id: generateId(), name: "Harina de Trigo", description: "Materia prima para panadería", sku: "MAT-HAR-001", barcode: "", unit_of_measure: "kg", is_service: 0, category_id: catAlimentos.id, tax_id: taxIva.id, price_cup: 0, price_usd: 0, cost_cup: 180, cost_usd: 1.5, created_at: now, updated_at: now });
+  const pAzucar = insert("products", { id: generateId(), name: "Azúcar Refinada", description: "Saco de azúcar", sku: "MAT-AZU-002", barcode: "", unit_of_measure: "kg", is_service: 0, category_id: catAlimentos.id, tax_id: taxIva.id, price_cup: 0, price_usd: 0, cost_cup: 150, cost_usd: 1.25, created_at: now, updated_at: now });
+  const pLevadura = insert("products", { id: generateId(), name: "Levadura Seca", description: "Levadura instantánea", sku: "MAT-LEV-003", barcode: "", unit_of_measure: "kg", is_service: 0, category_id: catAlimentos.id, tax_id: taxIva.id, price_cup: 0, price_usd: 0, cost_cup: 480, cost_usd: 4, created_at: now, updated_at: now });
+  const pCamisa = insert("products", { id: generateId(), name: "Camisa de Lino Nimbo", description: "Camisa de vestir 100% lino cubano", sku: "CLO-CAM-001", barcode: "6901123451", unit_of_measure: "pieza", is_service: 0, category_id: catAlimentos.id, tax_id: taxIva.id, price_cup: 2400, price_usd: 20, cost_cup: 1000, cost_usd: 8.3, created_at: now, updated_at: now });
+  const pMesa = insert("products", { id: generateId(), name: "Mesa de Centro Rústica", description: "Mesa de centro fabricada en madera preciosa", sku: "WRK-MES-001", barcode: "", unit_of_measure: "pieza", is_service: 0, category_id: catAlimentos.id, tax_id: taxIva.id, price_cup: 15000, price_usd: 125, cost_cup: 7000, cost_usd: 58.3, created_at: now, updated_at: now });
 
-  const varCamisaM = insert("variants", { id: generateId(), product_id: pCamisa.id, name: "Talla M - Blanco", sku: "CLO-CAM-001-M-W", barcode: "690112345101", price_cup: 2400, price_mlc: 20, cost_cup: 1000, cost_mlc: 8.3, stock: 25 });
-  const varCamisaL = insert("variants", { id: generateId(), product_id: pCamisa.id, name: "Talla L - Blanco", sku: "CLO-CAM-001-L-W", barcode: "690112345102", price_cup: 2500, price_mlc: 21, cost_cup: 1050, cost_mlc: 8.75, stock: 15 });
+  const varCamisaM = insert("variants", { id: generateId(), product_id: pCamisa.id, name: "Talla M - Blanco", sku: "CLO-CAM-001-M-W", barcode: "690112345101", price_cup: 2400, price_usd: 20, cost_cup: 1000, cost_usd: 8.3, stock: 25 });
+  const varCamisaL = insert("variants", { id: generateId(), product_id: pCamisa.id, name: "Talla L - Blanco", sku: "CLO-CAM-001-L-W", barcode: "690112345102", price_cup: 2500, price_usd: 21, cost_cup: 1050, cost_usd: 8.75, stock: 15 });
 
   insert("stocks", { id: generateId(), product_id: pPanSuave.id, warehouse_id: whBakery.id, quantity: 150, min_stock: 30, max_stock: 500 });
   insert("stocks", { id: generateId(), product_id: pPastel.id, warehouse_id: whBakery.id, quantity: 15, min_stock: 5, max_stock: 50 });
@@ -393,7 +393,7 @@ export function initializeDatabase() {
 
   const chartAccounts = [
     ["1010", "1010", "Caja Principal CUP", "asset"],
-    ["1020", "1020", "Caja Principal MLC", "asset"],
+    ["1020", "1020", "Caja Principal USD", "asset"],
     ["1030", "1030", "Cuentas por Cobrar Clientes", "asset"],
     ["1040", "1040", "Inventario de Mercancías", "asset"],
     ["1050", "1050", "Inventario de Materias Primas", "asset"],
@@ -410,9 +410,9 @@ export function initializeDatabase() {
 
   insert("cash_register_sessions", { id: generateId(), branch_id: bBakery.id, user_id: "admin_bakery_placeholder", initial_cash: 5000, status: "open", start_date: now });
 
-  const sale1 = insert("sales", { id: generateId(), branch_id: bBakery.id, customer_id: "cust_pedro", date: new Date(Date.now() - 86400000).toISOString(), total_cup: 1235, total_mlc: 10.3, tax_total_cup: 120, tax_total_mlc: 1, discount: 0, grand_total_cup: 1355, grand_total_mlc: 11.3, payment_method: "Transfermóvil", status: "completed", user_id: "admin_bakery_placeholder", created_at: now, updated_at: now });
-  insert("sale_items", { id: generateId(), sale_id: sale1.id, product_id: pPastel.id, quantity: 1, unit_price_cup: 1200, unit_price_mlc: 10, tax: 120, discount: 0 });
-  insert("sale_items", { id: generateId(), sale_id: sale1.id, product_id: pPanSuave.id, quantity: 1, unit_price_cup: 35, unit_price_mlc: 0.3, tax: 0, discount: 0 });
+  const sale1 = insert("sales", { id: generateId(), branch_id: bBakery.id, customer_id: "cust_pedro", date: new Date(Date.now() - 86400000).toISOString(), total_cup: 1235, total_usd: 10.3, tax_total_cup: 120, tax_total_usd: 1, discount: 0, grand_total_cup: 1355, grand_total_usd: 11.3, payment_method: "Transfermóvil", status: "completed", user_id: "admin_bakery_placeholder", created_at: now, updated_at: now });
+  insert("sale_items", { id: generateId(), sale_id: sale1.id, product_id: pPastel.id, quantity: 1, unit_price_cup: 1200, unit_price_usd: 10, tax: 120, discount: 0 });
+  insert("sale_items", { id: generateId(), sale_id: sale1.id, product_id: pPanSuave.id, quantity: 1, unit_price_cup: 35, unit_price_usd: 0.3, tax: 0, discount: 0 });
   insert("payments", { id: generateId(), sale_id: sale1.id, method: "Transfermóvil", currency: "CUP", amount: 1355, reference: "TM-482918" });
 
   const je1 = insert("journal_entries", { id: generateId(), description: "Venta Factura " + sale1.id, reference: sale1.id, status: "posted", date: now });
@@ -534,7 +534,7 @@ export const db = {
     create: (data: any) => {
       const id = generateId();
       const now = new Date().toISOString();
-      getDb().prepare(`INSERT INTO products (id, name, description, sku, barcode, unit_of_measure, is_service, category_id, tax_id, price_cup, price_mlc, cost_cup, cost_mlc, image_url, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.name, data.description || "", data.sku || "", data.barcode || "", data.unitOfMeasure || "pieza", data.isService ? 1 : 0, data.categoryId || null, data.taxId || null, data.priceCUP || 0, data.priceMLC || 0, data.costCUP || 0, data.costMLC || 0, data.imageUrl || "", now, now);
+      getDb().prepare(`INSERT INTO products (id, name, description, sku, barcode, unit_of_measure, is_service, category_id, tax_id, price_cup, price_usd, cost_cup, cost_usd, image_url, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.name, data.description || "", data.sku || "", data.barcode || "", data.unitOfMeasure || "pieza", data.isService ? 1 : 0, data.categoryId || null, data.taxId || null, data.priceCUP || 0, data.priceUSD || 0, data.costCUP || 0, data.costUSD || 0, data.imageUrl || "", now, now);
       return { id, ...data, createdAt: now, updatedAt: now };
     },
     update: (id: string, data: any) => {
@@ -555,7 +555,7 @@ export const db = {
     findByProductId: (productId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM variants WHERE product_id = ?"), [productId])),
     create: (data: any) => {
       const id = generateId();
-      getDb().prepare(`INSERT INTO variants (id, product_id, name, sku, barcode, price_cup, price_mlc, cost_cup, cost_mlc, stock) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.productId, data.name, data.sku || "", data.barcode || "", data.priceCUP || 0, data.priceMLC || 0, data.costCUP || 0, data.costMLC || 0, data.stock || 0);
+      getDb().prepare(`INSERT INTO variants (id, product_id, name, sku, barcode, price_cup, price_usd, cost_cup, cost_usd, stock) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.productId, data.name, data.sku || "", data.barcode || "", data.priceCUP || 0, data.priceUSD || 0, data.costCUP || 0, data.costUSD || 0, data.stock || 0);
       return { id, ...data };
     },
     update: (id: string, data: any) => {
@@ -670,7 +670,7 @@ export const db = {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM purchase_order_items"))),
     create: (data: any) => {
       const id = generateId();
-      getDb().prepare(`INSERT INTO purchase_order_items (id, purchase_order_id, product_id, variant_id, quantity, unit_cost_cup, unit_cost_mlc, received_qty) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.purchaseOrderId, data.productId, data.variantId || null, data.quantity || 0, data.unitCostCUP || 0, data.unitCostMLC || 0, data.receivedQty || 0);
+      getDb().prepare(`INSERT INTO purchase_order_items (id, purchase_order_id, product_id, variant_id, quantity, unit_cost_cup, unit_cost_usd, received_qty) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.purchaseOrderId, data.productId, data.variantId || null, data.quantity || 0, data.unitCostCUP || 0, data.unitCostUSD || 0, data.receivedQty || 0);
       return { id, ...data };
     },
     update: (id: string, data: any) => {
@@ -688,7 +688,7 @@ export const db = {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM supplier_invoices"))),
     create: (data: any) => {
       const id = generateId();
-      getDb().prepare(`INSERT INTO supplier_invoices (id, supplier_id, purchase_order_id, total_cup, total_mlc, paid_amount_cup, paid_amount_mlc, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.supplierId, data.purchaseOrderId || null, data.totalCUP || 0, data.totalMLC || 0, data.paidAmountCUP || 0, data.paidAmountMLC || 0, data.status || "pendiente");
+      getDb().prepare(`INSERT INTO supplier_invoices (id, supplier_id, purchase_order_id, total_cup, total_usd, paid_amount_cup, paid_amount_usd, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.supplierId, data.purchaseOrderId || null, data.totalCUP || 0, data.totalUSD || 0, data.paidAmountCUP || 0, data.paidAmountUSD || 0, data.status || "pendiente");
       return { id, ...data };
     },
     update: (id: string, data: any) => {
@@ -727,7 +727,7 @@ export const db = {
     create: (data: any) => {
       const id = generateId();
       const now = new Date().toISOString();
-      getDb().prepare(`INSERT INTO sales (id, branch_id, customer_id, date, total_cup, total_mlc, tax_total_cup, tax_total_mlc, discount, grand_total_cup, grand_total_mlc, payment_method, status, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.branchId, data.customerId || null, data.date || now, data.totalCUP || 0, data.totalMLC || 0, data.taxTotalCUP || 0, data.taxTotalMLC || 0, data.discount || 0, data.grandTotalCUP || 0, data.grandTotalMLC || 0, data.paymentMethod || "efectivo", data.status || "completed", data.userId || "sistema", now, now);
+      getDb().prepare(`INSERT INTO sales (id, branch_id, customer_id, date, total_cup, total_usd, tax_total_cup, tax_total_usd, discount, grand_total_cup, grand_total_usd, payment_method, status, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.branchId, data.customerId || null, data.date || now, data.totalCUP || 0, data.totalUSD || 0, data.taxTotalCUP || 0, data.taxTotalUSD || 0, data.discount || 0, data.grandTotalCUP || 0, data.grandTotalUSD || 0, data.paymentMethod || "efectivo", data.status || "completed", data.userId || "sistema", now, now);
       return { id, ...data, createdAt: now, updatedAt: now };
     },
     update: (id: string, data: any) => {
@@ -745,7 +745,7 @@ export const db = {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM sale_items"))),
     create: (data: any) => {
       const id = generateId();
-      getDb().prepare(`INSERT INTO sale_items (id, sale_id, product_id, variant_id, quantity, unit_price_cup, unit_price_mlc, tax, discount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.saleId, data.productId, data.variantId || null, data.quantity || 0, data.unitPriceCUP || 0, data.unitPriceMLC || 0, data.tax || 0, data.discount || 0);
+      getDb().prepare(`INSERT INTO sale_items (id, sale_id, product_id, variant_id, quantity, unit_price_cup, unit_price_usd, tax, discount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.saleId, data.productId, data.variantId || null, data.quantity || 0, data.unitPriceCUP || 0, data.unitPriceUSD || 0, data.tax || 0, data.discount || 0);
       return { id, ...data };
     },
   },
@@ -783,7 +783,7 @@ export const db = {
     create: (data: any) => {
       const id = generateId();
       const now = new Date().toISOString();
-      getDb().prepare(`INSERT INTO orders (id, branch_id, customer_id, order_date, delivery_date, status, total_cup, total_mlc, notes, delivery_address, assigned_driver_id, advance_payment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.branchId, data.customerId || null, now, data.deliveryDate || null, data.status || "pending", data.totalCUP || 0, data.totalMLC || 0, data.notes || "", data.deliveryAddress || "", data.assignedDriverId || "", data.advancePayment || 0);
+      getDb().prepare(`INSERT INTO orders (id, branch_id, customer_id, order_date, delivery_date, status, total_cup, total_usd, notes, delivery_address, assigned_driver_id, advance_payment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.branchId, data.customerId || null, now, data.deliveryDate || null, data.status || "pending", data.totalCUP || 0, data.totalUSD || 0, data.notes || "", data.deliveryAddress || "", data.assignedDriverId || "", data.advancePayment || 0);
       return { id, ...data, orderDate: now };
     },
     update: (id: string, data: any) => {
@@ -801,7 +801,7 @@ export const db = {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM order_items"))),
     create: (data: any) => {
       const id = generateId();
-      getDb().prepare(`INSERT INTO order_items (id, order_id, product_id, variant_id, quantity, unit_price_cup, unit_price_mlc) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, data.orderId, data.productId, data.variantId || null, data.quantity || 0, data.unitPriceCUP || 0, data.unitPriceMLC || 0);
+      getDb().prepare(`INSERT INTO order_items (id, order_id, product_id, variant_id, quantity, unit_price_cup, unit_price_usd) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, data.orderId, data.productId, data.variantId || null, data.quantity || 0, data.unitPriceCUP || 0, data.unitPriceUSD || 0);
       return { id, ...data };
     },
   },

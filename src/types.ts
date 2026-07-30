@@ -31,7 +31,7 @@ export enum BusinessType {
 
 export enum Currency {
   CUP = "CUP",
-  MLC = "MLC"
+  USD = "USD"
 }
 
 export interface Organization {
@@ -105,9 +105,9 @@ export interface Product {
   categoryId?: string;
   taxId?: string;
   priceCUP: number;
-  priceMLC: number;
+  priceUSD: number;
   costCUP: number;
-  costMLC: number;
+  costUSD: number;
   imageUrl?: string;
   createdAt: string;
   updatedAt: string;
@@ -120,9 +120,9 @@ export interface Variant {
   sku?: string;
   barcode?: string;
   priceCUP: number;
-  priceMLC: number;
+  priceUSD: number;
   costCUP: number;
-  costMLC: number;
+  costUSD: number;
   stock: number;
 }
 
@@ -200,7 +200,7 @@ export interface PurchaseOrderItem {
   variantId?: string;
   quantity: number;
   unitCostCUP: number;
-  unitCostMLC: number;
+  unitCostUSD: number;
   receivedQty: number;
 }
 
@@ -209,10 +209,10 @@ export interface SupplierInvoice {
   supplierId: string;
   purchaseOrderId?: string;
   totalCUP: number;
-  totalMLC: number;
+  totalUSD: number;
   dueDate?: string;
   paidAmountCUP: number;
-  paidAmountMLC: number;
+  paidAmountUSD: number;
   status: "pendiente" | "pagada";
 }
 
@@ -234,12 +234,12 @@ export interface Sale {
   customerId?: string;
   date: string;
   totalCUP: number;
-  totalMLC: number;
+  totalUSD: number;
   taxTotalCUP: number;
-  taxTotalMLC: number;
+  taxTotalUSD: number;
   discount: number;
   grandTotalCUP: number;
-  grandTotalMLC: number;
+  grandTotalUSD: number;
   paymentMethod: string; // "efectivo", "Transfermóvil", "Enzona", "tarjeta", etc.
   status: "completed" | "refunded";
   userId: string;
@@ -254,7 +254,7 @@ export interface SaleItem {
   variantId?: string;
   quantity: number;
   unitPriceCUP: number;
-  unitPriceMLC: number;
+  unitPriceUSD: number;
   tax: number;
   discount: number;
 }
@@ -289,7 +289,7 @@ export interface Order {
   deliveryDate?: string;
   status: "pending" | "preparing" | "ready" | "delivered" | "cancelled";
   totalCUP: number;
-  totalMLC: number;
+  totalUSD: number;
   notes?: string;
   deliveryAddress?: string;
   assignedDriverId?: string;
@@ -303,7 +303,7 @@ export interface OrderItem {
   variantId?: string;
   quantity: number;
   unitPriceCUP: number;
-  unitPriceMLC: number;
+  unitPriceUSD: number;
 }
 
 export interface Recipe {

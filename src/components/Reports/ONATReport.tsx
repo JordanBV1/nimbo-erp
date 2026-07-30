@@ -78,7 +78,7 @@ export default function ONATReport() {
     // Exchange Rate Row
     worksheet.mergeCells("A2:D2");
     const subCell = worksheet.getCell("A2");
-    subCell.value = `Tasa de Cambio de MLC aplicada: $${report.exchangeRate} CUP`;
+    subCell.value = `Tasa de Cambio de USD aplicada: $${report.exchangeRate} CUP`;
     subCell.font = { name: "Arial", size: 10, italic: true };
     subCell.alignment = { horizontal: "center" };
 
@@ -142,7 +142,7 @@ export default function ONATReport() {
     doc.setFontSize(11);
     doc.setFont("Helvetica", "normal");
     doc.text(`Periodo Contable: Mes ${month} / Año ${year}`, 14, 28);
-    doc.text(`Tasa de cambio de referencia: 1 MLC = ${report.exchangeRate} CUP`, 14, 34);
+    doc.text(`Tasa de cambio de referencia: 1 USD = ${report.exchangeRate} CUP`, 14, 34);
 
     // Summary Box
     doc.setFillColor(248, 250, 252);
@@ -215,7 +215,7 @@ export default function ONATReport() {
             Consolidado Fiscal ONAT
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            Calcula ingresos y gastos unificados en CUP. Los montos MLC se auto-convierten al valor histórico.
+            Calcula ingresos y gastos unificados en CUP. Los montos USD se auto-convierten al valor histórico.
           </p>
         </div>
 

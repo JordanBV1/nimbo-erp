@@ -126,9 +126,9 @@ export default function App() {
   const [newProdUnit, setNewProdUnit] = useState<string>("pieza");
   const [newProdCat, setNewProdCat] = useState<string>("");
   const [newProdPriceCUP, setNewProdPriceCUP] = useState<string>("0");
-  const [newProdPriceMLC, setNewProdPriceMLC] = useState<string>("0");
+  const [newProdPriceUSD, setNewProdPriceUSD] = useState<string>("0");
   const [newProdCostCUP, setNewProdCostCUP] = useState<string>("0");
-  const [newProdCostMLC, setNewProdCostMLC] = useState<string>("0");
+  const [newProdCostUSD, setNewProdCostUSD] = useState<string>("0");
   const [newProdImage, setNewProdImage] = useState<string>("");
   const [newProdVariants, setNewProdVariants] = useState<any[]>([]);
 
@@ -225,7 +225,7 @@ export default function App() {
       if (resConf.ok) {
         const confData = await resConf.json();
         setAuditLogs(confData.logs);
-        const rateSetting = confData.settings.find((s: any) => s.key === "exchange_rate_mlc");
+        const rateSetting = confData.settings.find((s: any) => s.key === "exchange_rate_usd");
         if (rateSetting) setExchangeRate(Number(rateSetting.value) || 120);
       }
 
@@ -479,7 +479,7 @@ export default function App() {
           variantId: variant?.id || null,
           name: prod.name + (variant ? ` (${variant.name})` : ""),
           priceCUP: variant ? variant.priceCUP : prod.priceCUP,
-          priceMLC: variant ? variant.priceMLC : prod.priceMLC,
+          priceUSD: variant ? variant.priceUSD : prod.priceUSD,
           tax: 0,
           discount: 0,
           quantity: 1
@@ -496,28 +496,28 @@ export default function App() {
 
     // Unify totals based on checkout Currency choice
     let totalCUP = 0;
-    let totalMLC = 0;
+    let totalUSD = 0;
 
     posCart.forEach((item) => {
       totalCUP += item.priceCUP * item.quantity;
-      totalMLC += item.priceMLC * item.quantity;
+      totalUSD += item.priceUSD * item.quantity;
     });
 
     const discAmt = Number(posDiscount) || 0;
     const finalCUP = Math.max(0, totalCUP - discAmt);
-    const finalMLC = Math.max(0, totalMLC - (discAmt / exchangeRate));
+    const finalUSD = Math.max(0, totalUSD - (discAmt / exchangeRate));
 
     const checkoutPayload = {
       branchId: branch.id,
       customerId: posCustomer || undefined,
       items: posCart,
       totalCUP,
-      totalMLC,
+      totalUSD,
       taxTotalCUP: 0,
-      taxTotalMLC: 0,
+      taxTotalUSD: 0,
       discount: discAmt,
       grandTotalCUP: finalCUP,
-      grandTotalMLC: finalMLC,
+      grandTotalUSD: finalUSD,
       paymentMethod: posPaymentMethod,
       userId: user.id,
       isCredit: posPaymentMethod === "credito"
@@ -569,9 +569,9 @@ export default function App() {
           isService: false,
           categoryId: newProdCat,
           priceCUP: Number(newProdPriceCUP),
-          priceMLC: Number(newProdPriceMLC),
+          priceUSD: Number(newProdPriceUSD),
           costCUP: Number(newProdCostCUP),
-          costMLC: Number(newProdCostMLC),
+          costUSD: Number(newProdCostUSD),
           imageUrl: newProdImage,
           variants: newProdVariants,
           userId: user.id
@@ -585,7 +585,7 @@ export default function App() {
         setNewProdSKU("");
         setNewProdBarcode("");
         setNewProdPriceCUP("0");
-        setNewProdPriceMLC("0");
+        setNewProdPriceUSD("0");
         setNewProdVariants([]);
         loadAllData();
       }
@@ -634,10 +634,10 @@ export default function App() {
     const todaySales = sales.filter((s) => s.date.substring(0, 10) === todayStr && s.status === "completed");
 
     let todaySalesCUP = 0;
-    let todaySalesMLC = 0;
+    let todaySalesUSD = 0;
     todaySales.forEach((s) => {
       todaySalesCUP += s.grandTotalCUP;
-      todaySalesMLC += s.grandTotalMLC;
+      todaySalesUSD += s.grandTotalUSD;
     });
 
     const stockAlerts = stocks.filter((s) => s.quantity < s.minStock).length;
@@ -647,7 +647,7 @@ export default function App() {
 
     return {
       todaySalesCUP,
-      todaySalesMLC,
+      todaySalesUSD,
       stockAlertsCount: stockAlerts,
       pendingOrdersCount: pendingOrders,
       activeProductionOrdersCount: activeProductions,
@@ -667,7 +667,7 @@ export default function App() {
 
     return last5Days.map((day) => {
       const daySales = sales.filter((s) => s.date.substring(0, 10) === day && s.status === "completed");
-      const totalCUP = daySales.reduce((sum, s) => sum + s.grandTotalCUP + (s.grandTotalMLC * exchangeRate), 0);
+      const totalCUP = daySales.reduce((sum, s) => sum + s.grandTotalCUP + (s.grandTotalUSD * exchangeRate), 0);
       return {
         fecha: day.substring(5), // MM-DD
         monto: totalCUP
@@ -1407,7 +1407,7 @@ export default function App() {
                   <div>
                     <h3 className="text-lg font-bold text-white tracking-tight font-display">Caja Cerrada</h3>
                     <p className="text-xs text-slate-400 mt-1">
-                      Para iniciar a facturar tus ventas en CUP/MLC, debes abrir una sesión de caja con un saldo inicial en efectivo.
+                      Para iniciar a facturar tus ventas en CUP/USD, debes abrir una sesión de caja con un saldo inicial en efectivo.
                     </p>
                   </div>
                   <form
@@ -1488,8 +1488,8 @@ export default function App() {
                           <div className="mt-4 pt-2 border-t border-slate-800/60 flex items-center justify-between">
                             <div>
                               <p className="text-xs font-extrabold text-white font-price">${p.priceCUP} CUP</p>
-                              {p.priceMLC > 0 && (
-                                <p className="text-[10px] text-blue-400 font-bold font-price">${p.priceMLC} MLC</p>
+                              {p.priceUSD > 0 && (
+                                <p className="text-[10px] text-blue-400 font-bold font-price">${p.priceUSD} USD</p>
                               )}
                             </div>
                             <span className="text-[10px] text-blue-400 font-bold opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1517,12 +1517,12 @@ export default function App() {
                             <div>
                               <h4 className="text-xs font-semibold text-slate-200">{item.name}</h4>
                               <p className="text-[10px] text-slate-400 mt-0.5">
-                                Cantidad: {item.quantity} x ${posCurrencyChoice === Currency.MLC ? item.priceMLC : item.priceCUP}
+                                Cantidad: {item.quantity} x ${posCurrencyChoice === Currency.USD ? item.priceUSD : item.priceCUP}
                               </p>
                             </div>
                             <div className="text-right flex items-center space-x-2">
                               <span className="text-xs font-bold text-slate-200">
-                                ${posCurrencyChoice === Currency.MLC ? (item.priceMLC * item.quantity).toFixed(2) : (item.priceCUP * item.quantity).toFixed(2)}
+                                ${posCurrencyChoice === Currency.USD ? (item.priceUSD * item.quantity).toFixed(2) : (item.priceCUP * item.quantity).toFixed(2)}
                               </span>
                               <button
                                 onClick={() => {
@@ -1567,7 +1567,7 @@ export default function App() {
                             className="w-full bg-slate-800 border border-slate-700 text-xs text-slate-200 rounded-xl p-2.5 mt-1 focus:outline-none font-bold cursor-pointer"
                           >
                             <option value={Currency.CUP} className="bg-[#121214] text-slate-200">Moneda Nacional (CUP)</option>
-                            <option value={Currency.MLC} className="bg-[#121214] text-slate-200">Moneda Libre Conv. (MLC)</option>
+                            <option value={Currency.USD} className="bg-[#121214] text-slate-200">Moneda Libre Conv. (USD)</option>
                           </select>
                         </div>
                       </div>
@@ -1603,7 +1603,7 @@ export default function App() {
                         <div className="flex items-center justify-between text-xs text-slate-400">
                           <span>Subtotal</span>
                           <span>
-                            {posCurrencyChoice === Currency.MLC ? `$${posCart.reduce((sum, item) => sum + item.priceMLC * item.quantity, 0).toFixed(2)} MLC` : `$${posCart.reduce((sum, item) => sum + item.priceCUP * item.quantity, 0).toLocaleString()} CUP`}
+                            {posCurrencyChoice === Currency.USD ? `$${posCart.reduce((sum, item) => sum + item.priceUSD * item.quantity, 0).toFixed(2)} USD` : `$${posCart.reduce((sum, item) => sum + item.priceCUP * item.quantity, 0).toLocaleString()} CUP`}
                           </span>
                         </div>
                         {posDiscount > 0 && (
@@ -1615,8 +1615,8 @@ export default function App() {
                         <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-sm font-black text-white">
                           <span>Gran Total Unificado</span>
                           <span className="text-blue-400 font-price">
-                            {posCurrencyChoice === Currency.MLC
-                              ? `$${Math.max(0, posCart.reduce((sum, item) => sum + item.priceMLC * item.quantity, 0) - (posDiscount / exchangeRate)).toFixed(2)} MLC`
+                            {posCurrencyChoice === Currency.USD
+                              ? `$${Math.max(0, posCart.reduce((sum, item) => sum + item.priceUSD * item.quantity, 0) - (posDiscount / exchangeRate)).toFixed(2)} USD`
                               : `$${Math.max(0, posCart.reduce((sum, item) => sum + item.priceCUP * item.quantity, 0) - posDiscount).toLocaleString()} CUP`}
                           </span>
                         </div>
@@ -1730,11 +1730,11 @@ export default function App() {
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[9px] font-bold text-slate-400 uppercase">Precio MLC</label>
+                      <label className="text-[9px] font-bold text-slate-400 uppercase">Precio USD</label>
                       <input
                         type="number"
-                        value={newProdPriceMLC}
-                        onChange={(e) => setNewProdPriceMLC(e.target.value)}
+                        value={newProdPriceUSD}
+                        onChange={(e) => setNewProdPriceUSD(e.target.value)}
                         className="w-full bg-[#0F0F12] border border-slate-800 text-slate-200 text-xs rounded-xl p-2 outline-none hover:border-slate-700 hover:bg-[#151518] focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition-all duration-300"
                       />
                     </div>
@@ -1748,11 +1748,11 @@ export default function App() {
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[9px] font-bold text-slate-400 uppercase">Costo MLC</label>
+                      <label className="text-[9px] font-bold text-slate-400 uppercase">Costo USD</label>
                       <input
                         type="number"
-                        value={newProdCostMLC}
-                        onChange={(e) => setNewProdCostMLC(e.target.value)}
+                        value={newProdCostUSD}
+                        onChange={(e) => setNewProdCostUSD(e.target.value)}
                         className="w-full bg-[#0F0F12] border border-slate-800 text-slate-200 text-xs rounded-xl p-2 outline-none hover:border-slate-700 hover:bg-[#151518] focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition-all duration-300"
                       />
                     </div>
@@ -1786,7 +1786,7 @@ export default function App() {
                         <th className="p-4">SKU / Cód. Barras</th>
                         <th className="p-4">Categoría</th>
                         <th className="p-4 text-right">Precio CUP</th>
-                        <th className="p-4 text-right">Precio MLC</th>
+                        <th className="p-4 text-right">Precio USD</th>
                         <th className="p-4 text-right">Costo CUP</th>
                       </tr>
                     </thead>
@@ -1806,7 +1806,7 @@ export default function App() {
                           </td>
                           <td className="p-4 font-semibold text-slate-400">{p.category?.name || "Sin Categoría"}</td>
                           <td className="p-4 text-right font-bold text-slate-200 font-price">${p.priceCUP.toLocaleString()}</td>
-                          <td className="p-4 text-right font-bold text-blue-400 font-price">${p.priceMLC.toFixed(2)}</td>
+                          <td className="p-4 text-right font-bold text-blue-400 font-price">${p.priceUSD.toFixed(2)}</td>
                           <td className="p-4 text-right font-semibold text-slate-400 font-price">${p.costCUP.toLocaleString()}</td>
                         </tr>
                       ))}
@@ -1980,7 +1980,7 @@ export default function App() {
                           branchId: branch.id,
                           customerId: customers[0]?.id || null,
                           totalCUP: 1500,
-                          totalMLC: 12.5,
+                          totalUSD: 12.5,
                           notes: "Pedido rápido desde panel",
                           deliveryAddress: address || "La Habana",
                           advancePayment: 500
@@ -2764,7 +2764,7 @@ export default function App() {
                   Ajustes del Sistema y Tasa Cambiaria
                 </h2>
                 <p className="text-xs text-slate-400 mt-1">
-                  Establece la tasa histórica de MLC para unificación CUP, consulta logs de auditoría física o cambia roles.
+                  Establece la tasa histórica de USD para unificación CUP, consulta logs de auditoría física o cambia roles.
                 </p>
               </div>
 
@@ -2779,7 +2779,7 @@ export default function App() {
                       const res = await fetch("/api/configuracion", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ settings: { exchange_rate_mlc: rate }, userId: user.id })
+                        body: JSON.stringify({ settings: { exchange_rate_usd: rate }, userId: user.id })
                       });
                       if (res.ok) {
                         triggerToast("Tasa de cambio guardada", "success");
@@ -2789,7 +2789,7 @@ export default function App() {
                     className="space-y-3"
                   >
                     <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase">Tasa de cambio 1 MLC en CUP</label>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase">Tasa de cambio 1 USD en CUP</label>
                       <input
                         name="rate"
                         type="number"
