@@ -80,7 +80,12 @@ export default function UserManager({
         setUsers(data.users || []);
         setBranches(data.branches || []);
         if (data.branches && data.branches.length > 0 && !formData.branchId) {
-          setFormData((prev) => ({ ...prev, branchId: data.branches[0].id }));
+          const isAdminUser = currentUser.role === Role.ADMIN;
+          if (isAdminUser) {
+            setFormData((prev) => ({ ...prev, branchId: data.branches[0].id }));
+          } else {
+            setFormData((prev) => ({ ...prev, branchId: currentUser.branchId }));
+          }
         }
       } else {
         triggerToast("Error al cargar la lista de usuarios", "error");
@@ -99,12 +104,13 @@ export default function UserManager({
 
   const openCreateModal = () => {
     setEditingUser(null);
+    const isAdminUser = currentUser.role === Role.ADMIN;
     setFormData({
       name: "",
       email: "",
       password: "",
       role: Role.CAJERO,
-      branchId: branches.length > 0 ? branches[0].id : currentUser.branchId || ""
+      branchId: isAdminUser ? (branches.length > 0 ? branches[0].id : "") : currentUser.branchId || ""
     });
     setIsModalOpen(true);
   };
@@ -338,16 +344,18 @@ export default function UserManager({
             <span className="hidden sm:inline">Actualizar</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => setIsBranchModalOpen(true)}
-            className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl font-bold text-xs flex items-center space-x-2 shadow-lg shadow-emerald-600/20 transition-all cursor-pointer"
-          >
-            <Building2 className="h-4 w-4" />
-            <span>+ Crear Nuevo Local</span>
-          </button>
+          {currentUser.role === Role.ADMIN && (
+            <button
+              type="button"
+              onClick={() => setIsBranchModalOpen(true)}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl font-bold text-xs flex items-center space-x-2 shadow-lg shadow-emerald-600/20 transition-all cursor-pointer"
+            >
+              <Building2 className="h-4 w-4" />
+              <span>+ Crear Nuevo Local</span>
+            </button>
+            )}
 
-          <button
+            <button
             type="button"
             onClick={openCreateModal}
             className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl font-bold text-xs flex items-center space-x-2 shadow-lg shadow-blue-600/20 transition-all cursor-pointer"
@@ -400,6 +408,7 @@ export default function UserManager({
         </div>
       </div>
 
+      {currentUser.role === Role.ADMIN && (
       <div className="bg-[#121214] border border-slate-800 rounded-3xl p-6 shadow-sm space-y-4" id="branches-list-section">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
           <div className="space-y-0.5">
@@ -415,6 +424,7 @@ export default function UserManager({
             </p>
           </div>
 
+          {currentUser.role === Role.ADMIN && (
           <button
             type="button"
             onClick={() => setIsBranchModalOpen(true)}
@@ -423,6 +433,7 @@ export default function UserManager({
             <Building2 className="h-4 w-4" />
             <span>Añadir Local (+500 CUP)</span>
           </button>
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -454,6 +465,7 @@ export default function UserManager({
           ))}
         </div>
       </div>
+      )}
 
       <div className="bg-[#121214] border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="relative w-full sm:w-80">
@@ -758,15 +770,16 @@ export default function UserManager({
                 </select>
               </div>
 
-              {branches.length > 0 && (
+              {branches.filter(b => currentUser.role === Role.ADMIN || b.id === currentUser.branchId).length > 0 && (
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sucursal Asignada</label>
                   <select
                     value={formData.branchId}
                     onChange={(e) => setFormData({ ...formData, branchId: e.target.value })}
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-blue-500 cursor-pointer"
+                    disabled={currentUser.role !== Role.ADMIN}
                   >
-                    {branches.map((b) => (
+                    {branches.filter(b => currentUser.role === Role.ADMIN || b.id === currentUser.branchId).map((b) => (
                       <option key={b.id} value={b.id}>
                         {b.name} ({b.businessType})
                       </option>
