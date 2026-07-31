@@ -4,6 +4,7 @@ coverage/
 db-data/
 data/
 dist/
+promo/
 .DS_Store
 *.log
 .env*
