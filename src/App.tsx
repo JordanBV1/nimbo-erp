@@ -131,6 +131,13 @@ export default function App() {
   const [branches, setBranches] = useState<any[]>([]);
   const [transfermovilPhone, setTransfermovilPhone] = useState<string>("+53 51234567");
   const [enzonaUser, setEnzonaUser] = useState<string>("nimbo.erp");
+  const [pricing, setPricing] = useState<{ basePrice: number; perBranchPrice: number; branchCount: number; totalPrice: number; currency: string }>({
+    basePrice: 5000,
+    perBranchPrice: 1000,
+    branchCount: 1,
+    totalPrice: 5000,
+    currency: "CUP",
+  });
 
   // POS / Cash Session States
   const [cashSession, setCashSession] = useState<any>(null);
@@ -284,6 +291,14 @@ export default function App() {
           // Load branches for subscription pricing
           const resBranches = await fetch(`/api/branches?orgId=${parsedOrg.id}`);
           if (resBranches.ok) setBranches(await resBranches.json());
+          // Load dynamic subscription pricing
+          const resPricing = await fetch(`/api/subscription/pricing?orgId=${parsedOrg.id}`);
+          if (resPricing.ok) {
+            const p = await resPricing.json();
+            setPricing({ basePrice: p.basePrice, perBranchPrice: p.perBranchPrice, branchCount: p.branchCount, totalPrice: p.totalPrice, currency: p.currency });
+            if (p.transfermovilPhone) setTransfermovilPhone(p.transfermovilPhone);
+            if (p.enzonaUser) setEnzonaUser(p.enzonaUser);
+          }
         }
       }
     } catch (err) {
@@ -432,10 +447,10 @@ export default function App() {
     return diffDays > 0 ? diffDays : 0;
   };
 
-  const SUBSCRIPTION_BASE_PRICE = 5000;
-  const SUBSCRIPTION_PER_BRANCH_PRICE = 1000;
+  const SUBSCRIPTION_BASE_PRICE = pricing.basePrice;
+  const SUBSCRIPTION_PER_BRANCH_PRICE = pricing.perBranchPrice;
   const getTotalSubscriptionPrice = () =>
-    SUBSCRIPTION_BASE_PRICE + Math.max(0, branches.length - 1) * SUBSCRIPTION_PER_BRANCH_PRICE;
+    SUBSCRIPTION_BASE_PRICE + Math.max(0, Math.max(pricing.branchCount, branches.length) - 1) * SUBSCRIPTION_PER_BRANCH_PRICE;
 
   const handleRegisterPayment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1069,16 +1084,16 @@ export default function App() {
                     <span>Realiza la Transferencia</span>
                   </div>
                   <p className="text-slate-400 text-[11px] leading-relaxed">
-                    Transfiere el pago mensual de <strong className="text-white font-bold">1000.00 CUP</strong> a uno de los siguientes destinos:
+                    Transfiere el pago mensual de <strong className="text-white font-bold">{getTotalSubscriptionPrice().toLocaleString()}.00 CUP</strong> a uno de los siguientes destinos:
                   </p>
                   <div className="space-y-1 pt-1 text-[11px]">
                     <div className="flex justify-between border-b border-slate-800/50 pb-1">
                       <span className="text-slate-400">Transfermóvil (Móvil):</span>
-                      <strong className="text-blue-300 font-mono">+53 51234567</strong>
+                      <strong className="text-blue-300 font-mono">{transfermovilPhone}</strong>
                     </div>
                     <div className="flex justify-between pt-1">
                       <span className="text-slate-400">Enzona (Usuario):</span>
-                      <strong className="text-blue-300 font-mono">nimbo.erp</strong>
+                      <strong className="text-blue-300 font-mono">{enzonaUser}</strong>
                     </div>
                   </div>
                 </div>
@@ -1090,8 +1105,7 @@ export default function App() {
                   </div>
                   <p className="text-slate-400 text-[11px]">
                     Copia el número/ID de transacción (TxID) del SMS de confirmación del <span className="text-white">9225</span> o de la notificación de Enzona.
-                  </p>
-                </div>
+                  </p>                </div>
               </div>
             </div>
 
@@ -1153,7 +1167,7 @@ export default function App() {
               </div>
 
               <div className="bg-slate-900/30 border border-slate-800 rounded-xl p-3 text-[10px] text-slate-400 font-mono">
-                Monto Requerido: <span className="text-emerald-400 font-bold">1000.00 CUP</span>
+                Monto Requerido: <span className="text-emerald-400 font-bold">{getTotalSubscriptionPrice().toLocaleString()}.00 CUP</span>
               </div>
 
               <button
@@ -1170,7 +1184,7 @@ export default function App() {
           <div className="flex flex-col md:flex-row items-center justify-between text-xs text-slate-500 pt-2 gap-4">
             <div className="flex items-center space-x-2">
               <span className="font-bold">Soporte Técnico:</span>
-              <span className="text-slate-400 font-mono">+53 51234567</span>
+              <span className="text-slate-400 font-mono">{transfermovilPhone}</span>
               <span>•</span>
               <span className="text-slate-400 font-mono">soporte@nimboerp.cu</span>
             </div>

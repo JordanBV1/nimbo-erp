@@ -389,6 +389,8 @@ export function initializeDatabase() {
   insert("system_settings", { id: generateId(), key: "business_address", value: "La Habana, Cuba" });
   insert("system_settings", { id: generateId(), key: "transfermovil_phone", value: "+53 51234567" });
   insert("system_settings", { id: generateId(), key: "enzona_user", value: "nimbo.erp" });
+  insert("system_settings", { id: generateId(), key: "subscription_base_price", value: "5000" });
+  insert("system_settings", { id: generateId(), key: "subscription_per_branch_price", value: "1000" });
 
   insert("users", { id: generateId(), name: "Administrador Panadería", email: "admin@bakery.com", password: demoPass, role: Role.ADMIN, branch_id: bBakery.id, created_at: now, updated_at: now });
   insert("users", { id: generateId(), name: "Cajero Ropa", email: "cajero@ropa.com", password: demoPass, role: Role.CAJERO, branch_id: bClothing.id, created_at: now, updated_at: now });

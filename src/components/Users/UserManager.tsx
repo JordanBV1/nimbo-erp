@@ -48,6 +48,11 @@ export default function UserManager({
   const [loading, setLoading] = useState<boolean>(true);
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [roleFilter, setRoleFilter] = useState<string>("ALL");
+  const [pricing, setPricing] = useState<{ basePrice: number; perBranchPrice: number; totalPrice: number }>({
+    basePrice: 5000,
+    perBranchPrice: 1000,
+    totalPrice: 5000,
+  });
 
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [editingUser, setEditingUser] = useState<DetailedUser | null>(null);
@@ -101,6 +106,16 @@ export default function UserManager({
   useEffect(() => {
     loadUsers();
   }, []);
+
+  useEffect(() => {
+    if (!org?.id) return;
+    fetch(`/api/subscription/pricing?orgId=${org.id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((p) => {
+        if (p) setPricing({ basePrice: p.basePrice, perBranchPrice: p.perBranchPrice, totalPrice: p.totalPrice });
+      })
+      .catch(() => {});
+  }, [org?.id]);
 
   const openCreateModal = () => {
     setEditingUser(null);
@@ -420,7 +435,7 @@ export default function UserManager({
               </span>
             </h3>
             <p className="text-xs text-slate-400">
-              Cada local opera de forma independiente. Tu plan incluye 1er local ($1,000 CUP base); cada local extra suma +$500 CUP/mes a la suscripción.
+              Cada local opera de forma independiente. Tu plan incluye 1er local ({pricing.basePrice.toLocaleString()} CUP base); cada local extra suma +{pricing.perBranchPrice.toLocaleString()} CUP/mes a la suscripción.
             </p>
           </div>
 
@@ -431,7 +446,7 @@ export default function UserManager({
             className="bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 self-start sm:self-auto cursor-pointer"
           >
             <Building2 className="h-4 w-4" />
-            <span>Añadir Local (+500 CUP)</span>
+            <span>Añadir Local (+{pricing.perBranchPrice.toLocaleString()} CUP)</span>
           </button>
           )}
         </div>
@@ -449,7 +464,7 @@ export default function UserManager({
                   )}
                 </span>
                 <span className="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-950/50 px-2 py-0.5 rounded-md border border-emerald-500/20">
-                  {index === 0 ? "Incluido Base" : "+$500 CUP / mes"}
+                  {index === 0 ? "Incluido Base" : `+${pricing.perBranchPrice.toLocaleString()} CUP / mes`}
                 </span>
               </div>
 
@@ -881,10 +896,10 @@ export default function UserManager({
             <div className="bg-blue-950/40 border border-blue-500/30 rounded-2xl p-4 space-y-1.5 text-xs text-slate-300">
               <div className="flex items-center justify-between text-blue-400 font-bold font-mono">
                 <span>Impacto en la Suscripción</span>
-                <span>+$500.00 CUP / mes</span>
+                <span>+{pricing.perBranchPrice.toLocaleString()}.00 CUP / mes</span>
               </div>
               <p className="text-[11px] leading-relaxed text-slate-400">
-                Tu primer local está incluido en la cuota base de <strong className="text-white">$1,000 CUP/mes</strong>. Cada local adicional agrega <strong className="text-emerald-400 font-bold">+$500 CUP/mes</strong> al cobro total recurrente.
+                Tu primer local está incluido en la cuota base de <strong className="text-white">{pricing.basePrice.toLocaleString()} CUP/mes</strong>. Cada local adicional agrega <strong className="text-emerald-400 font-bold">+{pricing.perBranchPrice.toLocaleString()} CUP/mes</strong> al cobro total recurrente.
               </p>
             </div>
 
@@ -948,7 +963,7 @@ export default function UserManager({
                   ) : (
                     <Building2 className="h-4 w-4" />
                   )}
-                  <span>Crear Local (+500 CUP)</span>
+                  <span>Crear Local (+{pricing.perBranchPrice.toLocaleString()} CUP)</span>
                 </button>
               </div>
             </form>

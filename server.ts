@@ -155,6 +155,13 @@ const registerSchema = z.object({
   businessType: z.nativeEnum(BusinessType).optional(),
 });
 
+const branchSchema = z.object({
+  name: z.string().min(1, "Nombre del local requerido"),
+  address: z.string().optional(),
+  businessType: z.nativeEnum(BusinessType).optional(),
+  organizationId: z.string().min(1, "Organización requerida"),
+});
+
 const paymentSchema = z.object({
   orgId: z.string().min(1),
   platform: z.enum(["transfermovil", "enzona"]),
@@ -528,6 +535,46 @@ async function startServer() {
     return res.json(filtered);
   });
 
+  app.post("/api/branches", authenticate, async (req, res) => {
+    const parsed = branchSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.errors[0].message });
+    }
+    const { name, address, businessType, organizationId } = parsed.data;
+
+    const org = db.organizations.findById(organizationId);
+    if (!org) {
+      return res.status(404).json({ error: "Organización no encontrada" });
+    }
+    const orgBranchIds = new Set(db.branches.findMany().filter((b: any) => b.organizationId === org.id).map((b: any) => b.id));
+    if (!orgBranchIds.has(req.user!.branchId)) {
+      return res.status(403).json({ error: "No tienes acceso a esta organización" });
+    }
+
+    const branch = db.branches.create({
+      organizationId: org.id,
+      name,
+      address: address || "",
+      businessType: businessType || BusinessType.GENERAL,
+    });
+
+    db.warehouses.create({
+      name: `Almacén Principal ${name}`,
+      branchId: branch.id,
+      address: address || "Almacén por defecto",
+      organizationId: org.id,
+    });
+
+    logAudit(req.user!.userId, "CREATE", "Branch", branch.id, `Created branch ${name}`);
+
+    const branchCount = db.branches.findMany().filter((b: any) => b.organizationId === org.id).length;
+    const basePrice = Number(db.systemSettings.getValue("subscription_base_price", "5000"));
+    const perBranchPrice = Number(db.systemSettings.getValue("subscription_per_branch_price", "1000"));
+    const monthlyFee = basePrice + Math.max(0, branchCount - 1) * perBranchPrice;
+
+    return res.status(201).json({ success: true, branch, branchCount, monthlyFee });
+  });
+
   // --- Subscription Routes ---
 
   app.get("/api/subscription/payments", authenticate, (req, res) => {
@@ -544,6 +591,35 @@ async function startServer() {
       logger.error({ err: e }, "Failed to fetch subscription payments");
       return res.status(500).json({ error: "Fallo al obtener el historial de pagos" });
     }
+  });
+
+  app.get("/api/subscription/pricing", authenticate, (req, res) => {
+    const { orgId } = req.query;
+    if (!orgId) {
+      return res.status(400).json({ error: "orgId es requerido" });
+    }
+    const org = db.organizations.findById(orgId as string);
+    if (!org) {
+      return res.status(404).json({ error: "Organización no encontrada" });
+    }
+    const orgBranchIds = new Set(db.branches.findMany().filter((b: any) => b.organizationId === org.id).map((b: any) => b.id));
+    if (!orgBranchIds.has(req.user!.branchId)) {
+      return res.status(403).json({ error: "No tienes acceso a esta organización" });
+    }
+    const branchCount = orgBranchIds.size;
+    const basePrice = Number(db.systemSettings.getValue("subscription_base_price", "5000"));
+    const perBranchPrice = Number(db.systemSettings.getValue("subscription_per_branch_price", "1000"));
+    const totalPrice = basePrice + Math.max(0, branchCount - 1) * perBranchPrice;
+    return res.json({
+      basePrice,
+      perBranchPrice,
+      branchCount,
+      totalPrice,
+      currency: "CUP",
+      transfermovilPhone: db.systemSettings.getValue("transfermovil_phone", "+53 51234567"),
+      enzonaUser: db.systemSettings.getValue("enzona_user", "nimbo.erp"),
+      businessName: db.systemSettings.getValue("business_name", "Nimbo ERP"),
+    });
   });
 
   app.post("/api/subscription/pay", authenticate, async (req, res) => {
