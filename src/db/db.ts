@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import {
   Role, BusinessType, Currency
 } from "../types.js";
+import { logger } from "../logger.js";
 
 const DB_PATH = path.join(process.cwd(), "db-data", "nimbo.db");
 
@@ -273,6 +274,11 @@ export function initializeDatabase() {
       platform TEXT, phone TEXT, transaction_id TEXT,
       status TEXT DEFAULT 'pending', date TEXT DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL,
+      token TEXT NOT NULL, expires_at TEXT NOT NULL,
+      used INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   // --- Migration: add organization_id to existing tables ---
@@ -315,11 +321,11 @@ export function initializeDatabase() {
 
   const count = (sql.prepare("SELECT COUNT(*) as c FROM users").get() as any).c;
   if (count > 0) {
-    console.log("Database already initialized.");
+    logger.info("Database already initialized.");
     return;
   }
 
-  console.log("Seeding initial database...");
+  logger.info("Seeding initial database...");
 
   const SALT_ROUNDS = 10;
   const hashSync = (pw: string) => bcrypt.hashSync(pw, SALT_ROUNDS);
@@ -473,7 +479,7 @@ export function initializeDatabase() {
   insert("journal_entry_lines", { id: generateId(), journal_entry_id: je1.id, account_id: "1010", debit: 1355, credit: 0 });
   insert("journal_entry_lines", { id: generateId(), journal_entry_id: je1.id, account_id: "4010", debit: 0, credit: 1355 });
 
-  console.log("Database successfully initialized!");
+  logger.info("Database successfully initialized!");
 
   // Assign the demo organization to all seeded data
   const seedOrgTables = ["categories", "taxes", "products", "variants", "suppliers", "customers", "recipes", "production_orders", "accounts", "journal_entries", "employees", "stocks", "stock_movements", "transfers", "purchase_orders", "supplier_invoices", "sales", "orders", "cash_register_sessions", "cash_register_transactions", "warehouses"];
@@ -1060,5 +1066,15 @@ export const db = {
       getDb().prepare(`UPDATE subscription_payments SET ${sets.join(", ")} WHERE id = ?`).run(...vals);
       return { id, ...data };
     },
+  },
+  passwordResetTokens: {
+    create: (data: any) => {
+      const id = generateId();
+      getDb().prepare(`INSERT INTO password_reset_tokens (id, user_id, token, expires_at, used) VALUES (?, ?, ?, ?, ?)`).run(id, data.userId, data.token, data.expiresAt, data.used ? 1 : 0);
+      return { id, ...data };
+    },
+    findValid: (userId: string, token: string) => toCamel(firstRow<any>(getDb().prepare(`SELECT * FROM password_reset_tokens WHERE user_id = ? AND token = ? AND used = 0 AND expires_at > strftime('%Y-%m-%dT%H:%M:%fZ','now') ORDER BY created_at DESC LIMIT 1`), [userId, token])),
+    markUsed: (id: string) => { getDb().prepare("UPDATE password_reset_tokens SET used = 1 WHERE id = ?").run(id); },
+    invalidateForUser: (userId: string) => { getDb().prepare("UPDATE password_reset_tokens SET used = 1 WHERE user_id = ?").run(userId); },
   },
 };

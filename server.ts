@@ -2,6 +2,9 @@ import dotenv from "dotenv";
 dotenv.config();
 import express from "express";
 import path from "path";
+import fs from "fs";
+import crypto from "crypto";
+import "express-async-errors";
 
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -12,6 +15,9 @@ import cookieParser from "cookie-parser";
 import { z } from "zod";
 import { db, initializeDatabase } from "./src/db/db.js";
 import { Role, BusinessType, Currency } from "./src/types.js";
+import { logger, httpLogger } from "./src/logger.js";
+import { scheduleBackup, createBackup } from "./src/db/backup.js";
+import { sendPasswordResetEmail } from "./src/mailer.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const JWT_SECRET = process.env.JWT_SECRET || (() => {
@@ -91,7 +97,7 @@ function resolveOrg(req: express.Request, res: express.Response, next: express.N
     req.orgId = org.id;
     next();
   } catch (e) {
-    console.error("resolveOrg failed:", e);
+    logger.error({ err: e }, "resolveOrg failed");
     return res.status(500).json({ error: "Error al resolver organización" });
   }
 }
@@ -122,7 +128,7 @@ function logAudit(userId: string, action: string, entity: string, entityId?: str
   try {
     db.auditLogs.create({ userId, action, entity, entityId, changes });
   } catch (e) {
-    console.error("Audit logging failed:", e);
+    logger.error({ err: e }, "Audit logging failed");
   }
 }
 
@@ -227,6 +233,7 @@ async function startServer() {
   }));
   app.use(express.json({ limit: "10mb" }));
   app.use(cookieParser());
+  app.use(httpLogger);
 
   // Rate limiting
   const authLimiter = rateLimit({
@@ -249,22 +256,50 @@ async function startServer() {
   app.use("/api", apiLimiter);
 
   app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-    console.error("Unhandled error:", err);
+    logger.error({ err }, "Unhandled error");
     res.status(500).json({ error: "Error interno del servidor" });
   });
 
   try {
     initializeDatabase();
   } catch (err) {
-    console.error("Database initialization failed", err);
+    logger.error({ err }, "Database initialization failed");
   }
 
   // Health check
   app.get("/api/health", (_req, res) => {
-    res.json({
-      status: "ok",
+    let dbOk = false;
+    let dbError: string | null = null;
+    try {
+      dbOk = (db.organizations.findMany().length >= 0);
+    } catch (e: any) {
+      dbError = e?.message || "unknown";
+    }
+
+    let disk = null;
+    try {
+      const dbFile = path.join(process.cwd(), "db-data", "nimbo.db");
+      if (fs.existsSync(dbFile)) {
+        const stat = fs.statSync(dbFile);
+        disk = { dbBytes: stat.size, dbModifiedAt: stat.mtime.toISOString() };
+      }
+    } catch {}
+
+    const mem = process.memoryUsage();
+
+    return res.json({
+      status: dbOk ? "ok" : "degraded",
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
+      startedAt: new Date(Date.now() - process.uptime() * 1000).toISOString(),
+      node: process.version,
+      database: { ok: dbOk, error: dbError },
+      disk,
+      memory: {
+        rssBytes: mem.rss,
+        heapUsedBytes: mem.heapUsed,
+        heapTotalBytes: mem.heapTotal,
+      },
     });
   });
 
@@ -386,6 +421,76 @@ async function startServer() {
     return res.json({ success: true });
   });
 
+  const forgotPasswordSchema = z.object({
+    email: z.string().email("Email inválido"),
+  });
+
+  const resetPasswordSchema = z.object({
+    token: z.string().min(1, "Token requerido"),
+    password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
+  });
+
+  app.post("/api/auth/forgot-password", async (req, res) => {
+    const parsed = forgotPasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.errors[0].message });
+    }
+    const { email } = parsed.data;
+    const user = db.users.findByEmail(email);
+
+    // Always respond the same way to avoid user enumeration
+    if (!user) {
+      return res.json({ success: true, message: "Si el correo existe, recibirás un enlace para restablecer tu contraseña." });
+    }
+
+    const token = crypto.randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    db.passwordResetTokens.invalidateForUser(user.id);
+    db.passwordResetTokens.create({ userId: user.id, token, expiresAt, used: false });
+
+    const baseUrl = process.env.APP_URL || `http://localhost:${PORT}`;
+    const resetUrl = `${baseUrl}/reset-password?token=${token}`;
+    const sent = await sendPasswordResetEmail(user.email, resetUrl);
+    if (!sent) {
+      logger.warn({ resetUrl }, "Password reset link generated (SMTP not configured)");
+    } else {
+      logger.info({ userId: user.id }, "Password reset email sent");
+    }
+
+    return res.json({
+      success: true,
+      message: sent
+        ? "Revisa tu correo para restablecer tu contraseña."
+        : "Revisa tu correo. (Correo no enviado: SMTP no configurado en el servidor)",
+    });
+  });
+
+  app.post("/api/auth/reset-password", async (req, res) => {
+    const parsed = resetPasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.errors[0].message });
+    }
+    const { token, password } = parsed.data;
+
+    const user = db.users.findMany().find((u: any) => {
+      const valid = db.passwordResetTokens.findValid(u.id, token);
+      return !!valid;
+    });
+
+    if (!user) {
+      return res.status(400).json({ error: "Enlace inválido o expirado. Solicita uno nuevo." });
+    }
+
+    const valid = db.passwordResetTokens.findValid(user.id, token);
+    const hashed = await bcrypt.hash(password, SALT_ROUNDS);
+    db.users.update(user.id, { password: hashed });
+    db.passwordResetTokens.markUsed(valid.id);
+    db.passwordResetTokens.invalidateForUser(user.id);
+    logAudit(user.id, "PASSWORD_RESET", "User", user.id);
+
+    return res.json({ success: true, message: "Contraseña restablecida correctamente. Ya puedes iniciar sesión." });
+  });
+
   app.get("/api/auth/me", authenticate, (req, res) => {
     const user = db.users.findById(req.user!.userId);
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
@@ -434,7 +539,7 @@ async function startServer() {
       orgPayments.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       return res.json(orgPayments);
     } catch (e) {
-      console.error("Failed to fetch subscription payments:", e);
+      logger.error({ err: e }, "Failed to fetch subscription payments");
       return res.status(500).json({ error: "Fallo al obtener el historial de pagos" });
     }
   });
@@ -482,7 +587,7 @@ async function startServer() {
         status: "verified",
       });
     } catch (e) {
-      console.error("Failed to create subscriptionPayment record:", e);
+      logger.error({ err: e }, "Failed to create subscriptionPayment record");
     }
 
     try {
@@ -500,7 +605,7 @@ async function startServer() {
         status: "posted",
       });
     } catch (e) {
-      console.error("Failed to log subscription to journal:", e);
+      logger.error({ err: e }, "Failed to log subscription to journal");
     }
 
     return res.json({
@@ -1598,6 +1703,16 @@ app.post("/api/rrhh/employees", authSub, (req, res) => {
     return res.json({ month: m, year: y, exchangeRate: rate, lines: reportLines });
   });
 
+  // Backup trigger (admin only)
+  app.post("/api/backup", authenticate, authorize(Role.SUPER_ADMIN), (req, res) => {
+    const dest = createBackup();
+    if (!dest) {
+      return res.status(500).json({ error: "No se pudo crear el backup" });
+    }
+    logAudit(req.user!.userId, "BACKUP", "Database", dest);
+    return res.json({ success: true, file: dest });
+  });
+
   // --- Vite / Static Serving ---
 
   if (process.env.NODE_ENV !== "production") {
@@ -1607,18 +1722,19 @@ app.post("/api/rrhh/employees", authSub, (req, res) => {
       appType: "spa",
     });
     app.use(vite.middlewares);
-    console.log("Vite development middleware integrated.");
+    logger.info("Vite development middleware integrated.");
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (_req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
-    console.log("Serving production static files from dist.");
+    logger.info("Serving production static files from dist.");
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Full-Stack ERP/POS server running on port ${PORT}`);
+    logger.info({ port: PORT, nodeEnv: process.env.NODE_ENV }, "Full-Stack ERP/POS server running");
+    scheduleBackup();
   });
 }
 

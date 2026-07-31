@@ -94,6 +94,11 @@ export default function App() {
   const [regPassword, setRegPassword] = useState<string>("");
   const [regType, setRegType] = useState<BusinessType>(BusinessType.GENERAL);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [authInfo, setAuthInfo] = useState<string | null>(null);
+  const [isForgotPassword, setIsForgotPassword] = useState<boolean>(false);
+  const [forgotEmail, setForgotEmail] = useState<string>("");
+  const [isSendingReset, setIsSendingReset] = useState<boolean>(false);
+  const [newPasswordInput, setNewPasswordInput] = useState<string>("");
 
   // Subscription / Payment states
   const [paymentPlatform, setPaymentPlatform] = useState<"transfermovil" | "enzona">("transfermovil");
@@ -369,6 +374,32 @@ export default function App() {
       }
     } catch {
       setAuthError("Fallo de conexión con el servidor.");
+    }
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    setAuthInfo(null);
+    setAuthError(null);
+    setIsSendingReset(true);
+    try {
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: forgotEmail })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAuthInfo(data.message || "Si el correo existe, recibirás un enlace.");
+      } else {
+        const err = await res.json();
+        setAuthError(err.error || "Error al solicitar el restablecimiento");
+      }
+    } catch {
+      setAuthError("Fallo de conexión con el servidor.");
+    } finally {
+      setIsSendingReset(false);
     }
   };
 
@@ -730,6 +761,81 @@ export default function App() {
   };
 
   // Render Login screen if not authenticated
+  const resetToken = new URLSearchParams(window.location.search).get("token");
+
+  if (resetToken && !user) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-4 relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl -translate-x-12 -translate-y-12"></div>
+        <div className="absolute bottom-0 right-0 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl translate-x-12 translate-y-12"></div>
+        <div className="w-full max-w-md bg-[#121214] border border-slate-800 rounded-3xl p-8 shadow-2xl relative z-10 space-y-6">
+          <div className="text-center space-y-2">
+            <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-500/10 text-blue-400 border border-blue-500/20 shadow-xl shadow-blue-500/5">
+              <Lock className="h-7 w-7" />
+            </span>
+            <h2 className="text-2xl font-black text-white tracking-tight font-display">Restablecer Contraseña</h2>
+            <p className="text-xs text-slate-400">Ingresa tu nueva contraseña</p>
+          </div>
+          {authError && (
+            <div className="p-3 bg-rose-950/40 border border-rose-500/30 rounded-xl text-xs text-rose-300 font-medium flex items-center space-x-2">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span>{authError}</span>
+            </div>
+          )}
+          {authInfo && (
+            <div className="p-3 bg-emerald-950/40 border border-emerald-500/30 rounded-xl text-xs text-emerald-300 font-medium flex items-center space-x-2">
+              <CheckCircle className="h-4 w-4 shrink-0" />
+              <span>{authInfo}</span>
+            </div>
+          )}
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setAuthError(null);
+              setAuthInfo(null);
+              try {
+                const res = await fetch("/api/auth/reset-password", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ token: resetToken, password: newPasswordInput })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                  setAuthInfo(data.message || "Contraseña restablecida");
+                  setTimeout(() => { window.location.href = "/"; }, 2000);
+                } else {
+                  setAuthError(data.error || "Error al restablecer la contraseña");
+                }
+              } catch {
+                setAuthError("Fallo de conexión con el servidor.");
+              }
+            }}
+            className="space-y-4"
+          >
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Nueva Contraseña</label>
+              <input
+                type="password"
+                required
+                minLength={6}
+                placeholder="Mínimo 6 caracteres"
+                value={newPasswordInput}
+                onChange={(e) => setNewPasswordInput(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+              />
+            </div>
+            <button
+              type="submit"
+              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl py-2.5 text-sm transition-all shadow-lg shadow-blue-600/20 cursor-pointer"
+            >
+              Restablecer Contraseña
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   if (!user) {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-4 relative overflow-hidden">
@@ -752,7 +858,47 @@ export default function App() {
             </div>
           )}
 
-          {!isRegistering ? (
+          {authInfo && (
+            <div className="p-3 bg-emerald-950/40 border border-emerald-500/30 rounded-xl text-xs text-emerald-300 font-medium flex items-center space-x-2">
+              <CheckCircle className="h-4 w-4 shrink-0" />
+              <span>{authInfo}</span>
+            </div>
+          )}
+
+          {isForgotPassword ? (
+            <form onSubmit={handleForgotPassword} className="space-y-4">
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Ingresa el correo de tu cuenta y te enviaremos un enlace para restablecer tu contraseña.
+              </p>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Correo Electrónico</label>
+                <input
+                  type="email"
+                  required
+                  placeholder="ejemplo@negocio.com"
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={isSendingReset}
+                className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold rounded-xl py-2.5 text-sm transition-all shadow-lg shadow-blue-600/20 cursor-pointer"
+              >
+                {isSendingReset ? "Enviando..." : "Enviar enlace de recuperación"}
+              </button>
+              <p className="text-xs text-slate-500 text-center">
+                <button
+                  type="button"
+                  onClick={() => { setIsForgotPassword(false); setAuthError(null); setAuthInfo(null); }}
+                  className="text-blue-400 hover:underline font-semibold cursor-pointer"
+                >
+                  Volver a Iniciar Sesión
+                </button>
+              </p>
+            </form>
+          ) : !isRegistering ? (
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Correo Electrónico</label>
@@ -790,6 +936,15 @@ export default function App() {
                   className="text-blue-400 hover:underline font-semibold cursor-pointer"
                 >
                   Registrarse
+                </button>
+              </p>
+              <p className="text-xs text-slate-500 text-center">
+                <button
+                  type="button"
+                  onClick={() => { setIsForgotPassword(true); setAuthError(null); setAuthInfo(null); }}
+                  className="text-slate-400 hover:text-blue-400 hover:underline font-semibold cursor-pointer"
+                >
+                  ¿Olvidaste tu contraseña?
                 </button>
               </p>
             </form>
