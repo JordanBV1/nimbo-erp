@@ -53,6 +53,19 @@ let memoryToken: string | null = null;
 export function getToken() { return memoryToken; }
 export function setToken(t: string | null) { memoryToken = t; }
 
+// Global handler: on 401 (expired/invalid session), clear session and return to login
+const originalFetch = window.fetch;
+window.fetch = async (...args) => {
+  const res = await originalFetch(...args);
+  const url = typeof args[0] === "string" ? args[0] : (args[0] as URL).pathname || "";
+  if (res.status === 401 && !url.includes("/api/auth/login") && !url.includes("/api/auth/register")) {
+    memoryToken = null;
+    sessionStorage.clear();
+    window.location.reload();
+  }
+  return res;
+};
+
 export default function App() {
   // Authentication & Branch states (restored from sessionStorage only for non-sensitive metadata)
   const [user, setUser] = useState<any>(() => {

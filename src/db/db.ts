@@ -90,10 +90,12 @@ export function initializeDatabase() {
       updated_at TEXT DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS categories (
-      id TEXT PRIMARY KEY, name TEXT NOT NULL, slug TEXT, parent_id TEXT
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, slug TEXT, parent_id TEXT,
+      organization_id TEXT REFERENCES organizations(id)
     );
     CREATE TABLE IF NOT EXISTS taxes (
-      id TEXT PRIMARY KEY, name TEXT NOT NULL, rate REAL DEFAULT 0, type TEXT
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, rate REAL DEFAULT 0, type TEXT,
+      organization_id TEXT REFERENCES organizations(id)
     );
     CREATE TABLE IF NOT EXISTS products (
       id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, sku TEXT,
@@ -102,6 +104,7 @@ export function initializeDatabase() {
       price_cup REAL DEFAULT 0, price_usd REAL DEFAULT 0,
       cost_cup REAL DEFAULT 0, cost_usd REAL DEFAULT 0,
       image_url TEXT,
+      organization_id TEXT REFERENCES organizations(id),
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
@@ -111,7 +114,8 @@ export function initializeDatabase() {
       cost_cup REAL DEFAULT 0, cost_usd REAL DEFAULT 0, stock REAL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS warehouses (
-      id TEXT PRIMARY KEY, name TEXT NOT NULL, address TEXT, branch_id TEXT NOT NULL
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, address TEXT, branch_id TEXT NOT NULL,
+      organization_id TEXT REFERENCES organizations(id)
     );
     CREATE TABLE IF NOT EXISTS stocks (
       id TEXT PRIMARY KEY, product_id TEXT NOT NULL, variant_id TEXT,
@@ -131,12 +135,14 @@ export function initializeDatabase() {
     );
     CREATE TABLE IF NOT EXISTS suppliers (
       id TEXT PRIMARY KEY, name TEXT NOT NULL, contact TEXT,
-      tax_id TEXT, email TEXT, phone TEXT, address TEXT, payment_terms TEXT
+      tax_id TEXT, email TEXT, phone TEXT, address TEXT, payment_terms TEXT,
+      organization_id TEXT REFERENCES organizations(id)
     );
     CREATE TABLE IF NOT EXISTS purchase_orders (
       id TEXT PRIMARY KEY, supplier_id TEXT NOT NULL, warehouse_id TEXT NOT NULL,
       status TEXT DEFAULT 'draft', order_date TEXT, expected_date TEXT,
       notes TEXT, created_by TEXT,
+      organization_id TEXT REFERENCES organizations(id),
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
@@ -155,7 +161,8 @@ export function initializeDatabase() {
     CREATE TABLE IF NOT EXISTS customers (
       id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT, phone TEXT,
       address TEXT, tax_id TEXT, credit_limit REAL DEFAULT 0,
-      current_balance REAL DEFAULT 0, loyalty_points REAL DEFAULT 0
+      current_balance REAL DEFAULT 0, loyalty_points REAL DEFAULT 0,
+      organization_id TEXT REFERENCES organizations(id)
     );
     CREATE TABLE IF NOT EXISTS sales (
       id TEXT PRIMARY KEY, branch_id TEXT NOT NULL, customer_id TEXT,
@@ -164,6 +171,7 @@ export function initializeDatabase() {
       discount REAL DEFAULT 0, grand_total_cup REAL DEFAULT 0,
       grand_total_usd REAL DEFAULT 0, payment_method TEXT,
       status TEXT DEFAULT 'completed', user_id TEXT,
+      organization_id TEXT REFERENCES organizations(id),
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
@@ -187,7 +195,8 @@ export function initializeDatabase() {
       order_date TEXT, delivery_date TEXT, status TEXT DEFAULT 'pending',
       total_cup REAL DEFAULT 0, total_usd REAL DEFAULT 0,
       notes TEXT, delivery_address TEXT, assigned_driver_id TEXT,
-      advance_payment REAL DEFAULT 0
+      advance_payment REAL DEFAULT 0,
+      organization_id TEXT REFERENCES organizations(id)
     );
     CREATE TABLE IF NOT EXISTS order_items (
       id TEXT PRIMARY KEY, order_id TEXT NOT NULL, product_id TEXT NOT NULL,
@@ -196,7 +205,8 @@ export function initializeDatabase() {
     );
     CREATE TABLE IF NOT EXISTS recipes (
       id TEXT PRIMARY KEY, name TEXT NOT NULL, product_id TEXT NOT NULL,
-      yield_quantity REAL DEFAULT 1, yield_unit TEXT DEFAULT 'pieza'
+      yield_quantity REAL DEFAULT 1, yield_unit TEXT DEFAULT 'pieza',
+      organization_id TEXT REFERENCES organizations(id)
     );
     CREATE TABLE IF NOT EXISTS recipe_ingredients (
       id TEXT PRIMARY KEY, recipe_id TEXT NOT NULL,
@@ -207,14 +217,17 @@ export function initializeDatabase() {
       id TEXT PRIMARY KEY, product_id TEXT NOT NULL, recipe_id TEXT,
       planned_quantity REAL DEFAULT 0, produced_quantity REAL DEFAULT 0,
       status TEXT DEFAULT 'planned', start_date TEXT, end_date TEXT,
-      warehouse_id TEXT, notes TEXT
+      warehouse_id TEXT, notes TEXT,
+      organization_id TEXT REFERENCES organizations(id)
     );
     CREATE TABLE IF NOT EXISTS accounts (
-      id TEXT PRIMARY KEY, code TEXT, name TEXT NOT NULL, type TEXT NOT NULL
+      id TEXT PRIMARY KEY, code TEXT, name TEXT NOT NULL, type TEXT NOT NULL,
+      organization_id TEXT REFERENCES organizations(id)
     );
     CREATE TABLE IF NOT EXISTS journal_entries (
       id TEXT PRIMARY KEY, date TEXT DEFAULT (datetime('now')),
-      description TEXT, reference TEXT, status TEXT DEFAULT 'draft'
+      description TEXT, reference TEXT, status TEXT DEFAULT 'draft',
+      organization_id TEXT REFERENCES organizations(id)
     );
     CREATE TABLE IF NOT EXISTS journal_entry_lines (
       id TEXT PRIMARY KEY, journal_entry_id TEXT NOT NULL,
@@ -229,7 +242,8 @@ export function initializeDatabase() {
       id TEXT PRIMARY KEY, first_name TEXT NOT NULL, last_name TEXT NOT NULL,
       hire_date TEXT, base_salary REAL DEFAULT 0,
       payment_type TEXT DEFAULT 'salary', bank_account TEXT,
-      tax_id TEXT, social_security_number TEXT, vacation_days REAL DEFAULT 24
+      tax_id TEXT, social_security_number TEXT, vacation_days REAL DEFAULT 24,
+      organization_id TEXT REFERENCES organizations(id)
     );
     CREATE TABLE IF NOT EXISTS attendances (
       id TEXT PRIMARY KEY, employee_id TEXT NOT NULL, date TEXT,
@@ -260,6 +274,44 @@ export function initializeDatabase() {
       status TEXT DEFAULT 'pending', date TEXT DEFAULT (datetime('now'))
     );
   `);
+
+  // --- Migration: add organization_id to existing tables ---
+  const orgTables = ["categories", "taxes", "products", "suppliers", "purchase_orders", "customers", "warehouses", "sales", "orders", "recipes", "production_orders", "accounts", "journal_entries", "employees", "variants", "stocks", "stock_movements", "transfers", "supplier_invoices", "cash_register_sessions", "cash_register_transactions", "attendances", "payroll_periods"];
+  for (const t of orgTables) {
+    try { sql.exec(`ALTER TABLE ${t} ADD COLUMN organization_id TEXT REFERENCES organizations(id)`); } catch {}
+  }
+
+  // --- Migration: backfill organization_id for existing rows ---
+  // 1) Branch-linked tables: resolve org through branch_id
+  try {
+    sql.exec(`
+      UPDATE warehouses SET organization_id = (SELECT b.organization_id FROM branches b WHERE b.id = warehouses.branch_id)
+      WHERE organization_id IS NULL
+    `);
+    sql.exec(`
+      UPDATE sales SET organization_id = (SELECT b.organization_id FROM branches b WHERE b.id = sales.branch_id)
+      WHERE organization_id IS NULL
+    `);
+    sql.exec(`
+      UPDATE orders SET organization_id = (SELECT b.organization_id FROM branches b WHERE b.id = orders.branch_id)
+      WHERE organization_id IS NULL
+    `);
+    sql.exec(`
+      UPDATE cash_register_sessions SET organization_id = (SELECT b.organization_id FROM branches b WHERE b.id = cash_register_sessions.branch_id)
+      WHERE organization_id IS NULL
+    `);
+  } catch {}
+
+  // 2) Single-org fallback: if the DB has exactly one organization, assign it to everything else
+  try {
+    const orgCount = (sql.prepare("SELECT COUNT(*) as c FROM organizations").get() as any).c;
+    if (orgCount === 1) {
+      const singleOrg = (sql.prepare("SELECT id FROM organizations LIMIT 1").get() as any).id;
+      for (const t of orgTables) {
+        sql.exec(`UPDATE ${t} SET organization_id = '${singleOrg}' WHERE organization_id IS NULL`);
+      }
+    }
+  } catch {}
 
   const count = (sql.prepare("SELECT COUNT(*) as c FROM users").get() as any).c;
   if (count > 0) {
@@ -422,6 +474,12 @@ export function initializeDatabase() {
   insert("journal_entry_lines", { id: generateId(), journal_entry_id: je1.id, account_id: "4010", debit: 0, credit: 1355 });
 
   console.log("Database successfully initialized!");
+
+  // Assign the demo organization to all seeded data
+  const seedOrgTables = ["categories", "taxes", "products", "variants", "suppliers", "customers", "recipes", "production_orders", "accounts", "journal_entries", "employees", "stocks", "stock_movements", "transfers", "purchase_orders", "supplier_invoices", "sales", "orders", "cash_register_sessions", "cash_register_transactions", "warehouses"];
+  for (const t of seedOrgTables) {
+    try { sql.exec(`UPDATE ${t} SET organization_id = '${orgId}' WHERE organization_id IS NULL`); } catch {}
+  }
 }
 
 // --- Map camelCase JS columns to snake_case SQL columns ---
@@ -516,28 +574,31 @@ export const db = {
   },
   categories: {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM categories"))),
+    findManyByOrg: (orgId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM categories WHERE organization_id = ?"), [orgId])),
     create: (data: any) => {
       const id = generateId();
-      getDb().prepare(`INSERT INTO categories (id, name, slug, parent_id) VALUES (?, ?, ?, ?)`).run(id, data.name, data.slug || "", data.parentId || null);
+      getDb().prepare(`INSERT INTO categories (id, name, slug, parent_id, organization_id) VALUES (?, ?, ?, ?, ?)`).run(id, data.name, data.slug || "", data.parentId || null, data.organizationId || null);
       return { id, ...data };
     },
     delete: (id: string) => { getDb().prepare("DELETE FROM categories WHERE id = ?").run(id); return true; },
   },
   taxes: {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM taxes"))),
+    findManyByOrg: (orgId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM taxes WHERE organization_id = ?"), [orgId])),
     create: (data: any) => {
       const id = generateId();
-      getDb().prepare(`INSERT INTO taxes (id, name, rate, type) VALUES (?, ?, ?, ?)`).run(id, data.name, data.rate, data.type);
+      getDb().prepare(`INSERT INTO taxes (id, name, rate, type, organization_id) VALUES (?, ?, ?, ?, ?)`).run(id, data.name, data.rate, data.type, data.organizationId || null);
       return { id, ...data };
     },
   },
   products: {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM products"))),
+    findManyByOrg: (orgId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM products WHERE organization_id = ?"), [orgId])),
     findById: (id: string) => toCamel(firstRow<any>(getDb().prepare("SELECT * FROM products WHERE id = ?"), [id])),
     create: (data: any) => {
       const id = generateId();
       const now = new Date().toISOString();
-      getDb().prepare(`INSERT INTO products (id, name, description, sku, barcode, unit_of_measure, is_service, category_id, tax_id, price_cup, price_usd, cost_cup, cost_usd, image_url, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.name, data.description || "", data.sku || "", data.barcode || "", data.unitOfMeasure || "pieza", data.isService ? 1 : 0, data.categoryId || null, data.taxId || null, data.priceCUP || 0, data.priceUSD || 0, data.costCUP || 0, data.costUSD || 0, data.imageUrl || "", now, now);
+      getDb().prepare(`INSERT INTO products (id, name, description, sku, barcode, unit_of_measure, is_service, category_id, tax_id, price_cup, price_usd, cost_cup, cost_usd, image_url, organization_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.name, data.description || "", data.sku || "", data.barcode || "", data.unitOfMeasure || "pieza", data.isService ? 1 : 0, data.categoryId || null, data.taxId || null, data.priceCUP || 0, data.priceUSD || 0, data.costCUP || 0, data.costUSD || 0, data.imageUrl || "", data.organizationId || null, now, now);
       return { id, ...data, createdAt: now, updatedAt: now };
     },
     update: (id: string, data: any) => {
@@ -555,10 +616,11 @@ export const db = {
   },
   variants: {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM variants"))),
+    findManyByOrg: (orgId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM variants WHERE organization_id = ?"), [orgId])),
     findByProductId: (productId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM variants WHERE product_id = ?"), [productId])),
     create: (data: any) => {
       const id = generateId();
-      getDb().prepare(`INSERT INTO variants (id, product_id, name, sku, barcode, price_cup, price_usd, cost_cup, cost_usd, stock) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.productId, data.name, data.sku || "", data.barcode || "", data.priceCUP || 0, data.priceUSD || 0, data.costCUP || 0, data.costUSD || 0, data.stock || 0);
+      getDb().prepare(`INSERT INTO variants (id, product_id, name, sku, barcode, price_cup, price_usd, cost_cup, cost_usd, stock, organization_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.productId, data.name, data.sku || "", data.barcode || "", data.priceCUP || 0, data.priceUSD || 0, data.costCUP || 0, data.costUSD || 0, data.stock || 0, data.organizationId || null);
       return { id, ...data };
     },
     update: (id: string, data: any) => {
@@ -577,19 +639,21 @@ export const db = {
   },
   warehouses: {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM warehouses"))),
+    findManyByOrg: (orgId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM warehouses WHERE organization_id = ?"), [orgId])),
     findByBranchId: (branchId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM warehouses WHERE branch_id = ?"), [branchId])),
     create: (data: any) => {
       const id = generateId();
-      getDb().prepare(`INSERT INTO warehouses (id, name, address, branch_id) VALUES (?, ?, ?, ?)`).run(id, data.name, data.address || "", data.branchId);
+      getDb().prepare(`INSERT INTO warehouses (id, name, address, branch_id, organization_id) VALUES (?, ?, ?, ?, ?)`).run(id, data.name, data.address || "", data.branchId, data.organizationId || null);
       return { id, ...data };
     },
   },
   stocks: {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM stocks"))),
+    findManyByOrg: (orgId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM stocks WHERE organization_id = ?"), [orgId])),
     findByWarehouseId: (whId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM stocks WHERE warehouse_id = ?"), [whId])),
     create: (data: any) => {
       const id = generateId();
-      getDb().prepare(`INSERT INTO stocks (id, product_id, variant_id, warehouse_id, quantity, min_stock, max_stock) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, data.productId, data.variantId || null, data.warehouseId, data.quantity || 0, data.minStock || 5, data.maxStock || 9999);
+      getDb().prepare(`INSERT INTO stocks (id, product_id, variant_id, warehouse_id, quantity, min_stock, max_stock, organization_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.productId, data.variantId || null, data.warehouseId, data.quantity || 0, data.minStock || 5, data.maxStock || 9999, data.organizationId || null);
       return { id, ...data };
     },
     update: (id: string, data: any) => {
@@ -606,19 +670,21 @@ export const db = {
   },
   stockMovements: {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM stock_movements"))),
+    findManyByOrg: (orgId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM stock_movements WHERE organization_id = ?"), [orgId])),
     create: (data: any) => {
       const id = generateId();
       const now = new Date().toISOString();
-      getDb().prepare(`INSERT INTO stock_movements (id, stock_id, type, quantity, reason, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, data.stockId, data.type, data.quantity, data.reason || "", data.userId || "sistema", now);
+      getDb().prepare(`INSERT INTO stock_movements (id, stock_id, type, quantity, reason, user_id, organization_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.stockId, data.type, data.quantity, data.reason || "", data.userId || "sistema", data.organizationId || null, now);
       return { id, ...data, createdAt: now };
     },
   },
   transfers: {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM transfers"))),
+    findManyByOrg: (orgId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM transfers WHERE organization_id = ?"), [orgId])),
     create: (data: any) => {
       const id = generateId();
       const now = new Date().toISOString();
-      getDb().prepare(`INSERT INTO transfers (id, from_warehouse_id, to_warehouse_id, status, items, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, data.fromWarehouseId, data.toWarehouseId, data.status || "completada", JSON.stringify(data.items || []), data.createdBy || "sistema", now);
+      getDb().prepare(`INSERT INTO transfers (id, from_warehouse_id, to_warehouse_id, status, items, created_by, organization_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.fromWarehouseId, data.toWarehouseId, data.status || "completada", JSON.stringify(data.items || []), data.createdBy || "sistema", data.organizationId || null, now);
       return { id, ...data, createdAt: now };
     },
     update: (id: string, data: any) => {
@@ -634,9 +700,10 @@ export const db = {
   },
   suppliers: {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM suppliers"))),
+    findManyByOrg: (orgId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM suppliers WHERE organization_id = ?"), [orgId])),
     create: (data: any) => {
       const id = generateId();
-      getDb().prepare(`INSERT INTO suppliers (id, name, contact, tax_id, email, phone, address, payment_terms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.name, data.contact || "", data.taxId || "", data.email || "", data.phone || "", data.address || "", data.paymentTerms || "");
+      getDb().prepare(`INSERT INTO suppliers (id, name, contact, tax_id, email, phone, address, payment_terms, organization_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.name, data.contact || "", data.taxId || "", data.email || "", data.phone || "", data.address || "", data.paymentTerms || "", data.organizationId || null);
       return { id, ...data };
     },
     update: (id: string, data: any) => {
@@ -652,10 +719,11 @@ export const db = {
   },
   purchaseOrders: {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM purchase_orders"))),
+    findManyByOrg: (orgId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM purchase_orders WHERE organization_id = ?"), [orgId])),
     create: (data: any) => {
       const id = generateId();
       const now = new Date().toISOString();
-      getDb().prepare(`INSERT INTO purchase_orders (id, supplier_id, warehouse_id, status, order_date, notes, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.supplierId, data.warehouseId, data.status || "draft", data.orderDate || now.substring(0, 10), data.notes || "", data.createdBy || "admin", now, now);
+      getDb().prepare(`INSERT INTO purchase_orders (id, supplier_id, warehouse_id, status, order_date, notes, created_by, organization_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.supplierId, data.warehouseId, data.status || "draft", data.orderDate || now.substring(0, 10), data.notes || "", data.createdBy || "admin", data.organizationId || null, now, now);
       return { id, ...data, createdAt: now, updatedAt: now };
     },
     update: (id: string, data: any) => {
@@ -689,9 +757,10 @@ export const db = {
   },
   supplierInvoices: {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM supplier_invoices"))),
+    findManyByOrg: (orgId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM supplier_invoices WHERE organization_id = ?"), [orgId])),
     create: (data: any) => {
       const id = generateId();
-      getDb().prepare(`INSERT INTO supplier_invoices (id, supplier_id, purchase_order_id, total_cup, total_usd, paid_amount_cup, paid_amount_usd, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.supplierId, data.purchaseOrderId || null, data.totalCUP || 0, data.totalUSD || 0, data.paidAmountCUP || 0, data.paidAmountUSD || 0, data.status || "pendiente");
+      getDb().prepare(`INSERT INTO supplier_invoices (id, supplier_id, purchase_order_id, total_cup, total_usd, paid_amount_cup, paid_amount_usd, status, organization_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.supplierId, data.purchaseOrderId || null, data.totalCUP || 0, data.totalUSD || 0, data.paidAmountCUP || 0, data.paidAmountUSD || 0, data.status || "pendiente", data.organizationId || null);
       return { id, ...data };
     },
     update: (id: string, data: any) => {
@@ -707,10 +776,11 @@ export const db = {
   },
   customers: {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM customers"))),
+    findManyByOrg: (orgId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM customers WHERE organization_id = ?"), [orgId])),
     findById: (id: string) => toCamel(firstRow<any>(getDb().prepare("SELECT * FROM customers WHERE id = ?"), [id])),
     create: (data: any) => {
       const id = generateId();
-      getDb().prepare(`INSERT INTO customers (id, name, email, phone, address, tax_id, credit_limit, current_balance, loyalty_points) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.name, data.email || "", data.phone || "", data.address || "", data.taxId || "", data.creditLimit || 0, data.currentBalance || 0, data.loyaltyPoints || 0);
+      getDb().prepare(`INSERT INTO customers (id, name, email, phone, address, tax_id, credit_limit, current_balance, loyalty_points, organization_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.name, data.email || "", data.phone || "", data.address || "", data.taxId || "", data.creditLimit || 0, data.currentBalance || 0, data.loyaltyPoints || 0, data.organizationId || null);
       return { id, ...data };
     },
     update: (id: string, data: any) => {
@@ -726,11 +796,12 @@ export const db = {
   },
   sales: {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM sales"))),
+    findManyByOrg: (orgId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM sales WHERE organization_id = ?"), [orgId])),
     findById: (id: string) => toCamel(firstRow<any>(getDb().prepare("SELECT * FROM sales WHERE id = ?"), [id])),
     create: (data: any) => {
       const id = generateId();
       const now = new Date().toISOString();
-      getDb().prepare(`INSERT INTO sales (id, branch_id, customer_id, date, total_cup, total_usd, tax_total_cup, tax_total_usd, discount, grand_total_cup, grand_total_usd, payment_method, status, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.branchId, data.customerId || null, data.date || now, data.totalCUP || 0, data.totalUSD || 0, data.taxTotalCUP || 0, data.taxTotalUSD || 0, data.discount || 0, data.grandTotalCUP || 0, data.grandTotalUSD || 0, data.paymentMethod || "efectivo", data.status || "completed", data.userId || "sistema", now, now);
+      getDb().prepare(`INSERT INTO sales (id, branch_id, customer_id, date, total_cup, total_usd, tax_total_cup, tax_total_usd, discount, grand_total_cup, grand_total_usd, payment_method, status, user_id, organization_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.branchId, data.customerId || null, data.date || now, data.totalCUP || 0, data.totalUSD || 0, data.taxTotalCUP || 0, data.taxTotalUSD || 0, data.discount || 0, data.grandTotalCUP || 0, data.grandTotalUSD || 0, data.paymentMethod || "efectivo", data.status || "completed", data.userId || "sistema", data.organizationId || null, now, now);
       return { id, ...data, createdAt: now, updatedAt: now };
     },
     update: (id: string, data: any) => {
@@ -763,10 +834,11 @@ export const db = {
   },
   cashRegisterSessions: {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM cash_register_sessions"))),
+    findManyByOrg: (orgId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM cash_register_sessions WHERE organization_id = ?"), [orgId])),
     create: (data: any) => {
       const id = generateId();
       const now = new Date().toISOString();
-      getDb().prepare(`INSERT INTO cash_register_sessions (id, branch_id, user_id, start_date, initial_cash, status) VALUES (?, ?, ?, ?, ?, ?)`).run(id, data.branchId, data.userId || "", now, data.initialCash || 0, data.status || "open");
+      getDb().prepare(`INSERT INTO cash_register_sessions (id, branch_id, user_id, start_date, initial_cash, status, organization_id) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, data.branchId, data.userId || "", now, data.initialCash || 0, data.status || "open", data.organizationId || null);
       return { id, ...data, startDate: now };
     },
     update: (id: string, data: any) => {
@@ -782,11 +854,12 @@ export const db = {
   },
   orders: {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM orders"))),
+    findManyByOrg: (orgId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM orders WHERE organization_id = ?"), [orgId])),
     findById: (id: string) => toCamel(firstRow<any>(getDb().prepare("SELECT * FROM orders WHERE id = ?"), [id])),
     create: (data: any) => {
       const id = generateId();
       const now = new Date().toISOString();
-      getDb().prepare(`INSERT INTO orders (id, branch_id, customer_id, order_date, delivery_date, status, total_cup, total_usd, notes, delivery_address, assigned_driver_id, advance_payment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.branchId, data.customerId || null, now, data.deliveryDate || null, data.status || "pending", data.totalCUP || 0, data.totalUSD || 0, data.notes || "", data.deliveryAddress || "", data.assignedDriverId || "", data.advancePayment || 0);
+      getDb().prepare(`INSERT INTO orders (id, branch_id, customer_id, order_date, delivery_date, status, total_cup, total_usd, notes, delivery_address, assigned_driver_id, advance_payment, organization_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.branchId, data.customerId || null, now, data.deliveryDate || null, data.status || "pending", data.totalCUP || 0, data.totalUSD || 0, data.notes || "", data.deliveryAddress || "", data.assignedDriverId || "", data.advancePayment || 0, data.organizationId || null);
       return { id, ...data, orderDate: now };
     },
     update: (id: string, data: any) => {
@@ -810,9 +883,10 @@ export const db = {
   },
   recipes: {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM recipes"))),
+    findManyByOrg: (orgId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM recipes WHERE organization_id = ?"), [orgId])),
     create: (data: any) => {
       const id = generateId();
-      getDb().prepare(`INSERT INTO recipes (id, name, product_id, yield_quantity, yield_unit) VALUES (?, ?, ?, ?, ?)`).run(id, data.name, data.productId, data.yieldQuantity || 1, data.yieldUnit || "pieza");
+      getDb().prepare(`INSERT INTO recipes (id, name, product_id, yield_quantity, yield_unit, organization_id) VALUES (?, ?, ?, ?, ?, ?)`).run(id, data.name, data.productId, data.yieldQuantity || 1, data.yieldUnit || "pieza", data.organizationId || null);
       return { id, ...data };
     },
     update: (id: string, data: any) => {
@@ -838,9 +912,10 @@ export const db = {
   },
   productionOrders: {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM production_orders"))),
+    findManyByOrg: (orgId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM production_orders WHERE organization_id = ?"), [orgId])),
     create: (data: any) => {
       const id = generateId();
-      getDb().prepare(`INSERT INTO production_orders (id, product_id, recipe_id, planned_quantity, produced_quantity, status, warehouse_id, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.productId, data.recipeId || null, data.plannedQuantity || 0, 0, data.status || "planned", data.warehouseId, data.notes || "");
+      getDb().prepare(`INSERT INTO production_orders (id, product_id, recipe_id, planned_quantity, produced_quantity, status, warehouse_id, notes, organization_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.productId, data.recipeId || null, data.plannedQuantity || 0, 0, data.status || "planned", data.warehouseId, data.notes || "", data.organizationId || null);
       return { id, ...data };
     },
     update: (id: string, data: any) => {
@@ -856,17 +931,19 @@ export const db = {
   },
   accounts: {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM accounts"))),
+    findManyByOrg: (orgId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM accounts WHERE organization_id = ?"), [orgId])),
     create: (data: any) => {
-      getDb().prepare(`INSERT INTO accounts (id, code, name, type) VALUES (?, ?, ?, ?)`).run(data.id, data.code, data.name, data.type);
+      getDb().prepare(`INSERT INTO accounts (id, code, name, type, organization_id) VALUES (?, ?, ?, ?, ?)`).run(data.id, data.code, data.name, data.type, data.organizationId || null);
       return data;
     },
   },
   journalEntries: {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM journal_entries"))),
+    findManyByOrg: (orgId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM journal_entries WHERE organization_id = ?"), [orgId])),
     create: (data: any) => {
       const id = generateId();
       const now = new Date().toISOString();
-      getDb().prepare(`INSERT INTO journal_entries (id, description, reference, status, date) VALUES (?, ?, ?, ?, ?)`).run(id, data.description || "", data.reference || "", data.status || "draft", now);
+      getDb().prepare(`INSERT INTO journal_entries (id, description, reference, status, date, organization_id) VALUES (?, ?, ?, ?, ?, ?)`).run(id, data.description || "", data.reference || "", data.status || "draft", now, data.organizationId || null);
       return { id, ...data, date: now };
     },
   },
@@ -880,18 +957,20 @@ export const db = {
   },
   cashRegisterTransactions: {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM cash_register_transactions"))),
+    findManyByOrg: (orgId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM cash_register_transactions WHERE organization_id = ?"), [orgId])),
     create: (data: any) => {
       const id = generateId();
       const now = new Date().toISOString();
-      getDb().prepare(`INSERT INTO cash_register_transactions (id, type, amount, currency, description, category, date, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.type, data.amount || 0, data.currency || "CUP", data.description || "", data.category || "General", now, data.userId || "sistema");
+      getDb().prepare(`INSERT INTO cash_register_transactions (id, type, amount, currency, description, category, date, user_id, organization_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.type, data.amount || 0, data.currency || "CUP", data.description || "", data.category || "General", now, data.userId || "sistema", data.organizationId || null);
       return { id, ...data, date: now };
     },
   },
   employees: {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM employees"))),
+    findManyByOrg: (orgId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM employees WHERE organization_id = ?"), [orgId])),
     create: (data: any) => {
       const id = generateId();
-      getDb().prepare(`INSERT INTO employees (id, first_name, last_name, hire_date, base_salary, payment_type, bank_account, tax_id, social_security_number, vacation_days) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.firstName, data.lastName, data.hireDate || new Date().toISOString().substring(0, 10), data.baseSalary || 0, data.paymentType || "salary", data.bankAccount || "", data.taxId || "", data.socialSecurityNumber || "", data.vacationDays || 24);
+      getDb().prepare(`INSERT INTO employees (id, first_name, last_name, hire_date, base_salary, payment_type, bank_account, tax_id, social_security_number, vacation_days, organization_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.firstName, data.lastName, data.hireDate || new Date().toISOString().substring(0, 10), data.baseSalary || 0, data.paymentType || "salary", data.bankAccount || "", data.taxId || "", data.socialSecurityNumber || "", data.vacationDays || 24, data.organizationId || null);
       return { id, ...data };
     },
     update: (id: string, data: any) => {
