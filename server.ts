@@ -507,6 +507,54 @@ async function startServer() {
     return res.json(safeUser);
   });
 
+  const updateProfileSchema = z.object({
+    name: z.string().min(1, "El nombre no puede estar vacío").max(120).optional(),
+    email: z.string().email("Email inválido").optional(),
+    currentPassword: z.string().min(1, "Debes confirmar tu contraseña actual").optional(),
+    newPassword: z.string().min(6, "La nueva contraseña debe tener al menos 6 caracteres").optional(),
+  });
+
+  app.put("/api/users/me", authenticate, async (req, res) => {
+    const parsed = updateProfileSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.errors[0].message });
+    }
+    const { name, email, currentPassword, newPassword } = parsed.data;
+
+    const existing = db.users.findById(req.user!.userId);
+    if (!existing) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    const sensitiveChange = email !== undefined || newPassword !== undefined;
+    if (sensitiveChange) {
+      if (!currentPassword) {
+        return res.status(400).json({ error: "Debes confirmar tu contraseña actual para cambiar el correo o la contraseña" });
+      }
+      const valid = await bcrypt.compare(currentPassword, existing.password);
+      if (!valid) {
+        return res.status(400).json({ error: "La contraseña actual es incorrecta" });
+      }
+    }
+
+    if (email && email.trim().toLowerCase() !== existing.email.toLowerCase()) {
+      const other = db.users.findByEmail(email);
+      if (other) {
+        return res.status(400).json({ error: "El nuevo correo ya está en uso por otro usuario" });
+      }
+    }
+
+    const updateData: any = {};
+    if (name !== undefined) updateData.name = name.trim();
+    if (email !== undefined) updateData.email = email.trim().toLowerCase();
+    if (newPassword) updateData.password = await bcrypt.hash(newPassword, SALT_ROUNDS);
+
+    const updatedUser = db.users.update(existing.id, updateData);
+    logAudit(req.user!.userId, "UPDATE_PROFILE", "User", existing.id, `Perfil actualizado por el propio usuario`);
+    const { password: _pw, ...safeUser } = updatedUser;
+    return res.json({ success: true, user: safeUser });
+  });
+
   app.get("/api/auth/organization", authenticate, (req, res) => {
     const { orgId } = req.query;
     if (!orgId) {

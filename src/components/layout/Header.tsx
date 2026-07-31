@@ -12,9 +12,10 @@ interface HeaderProps {
   branch: any;
   onLogout: () => void;
   onRefreshData?: () => void;
+  onOpenProfile?: () => void;
 }
 
-export default function Header({ user, branch, onLogout, onRefreshData }: HeaderProps) {
+export default function Header({ user, branch, onLogout, onRefreshData, onOpenProfile }: HeaderProps) {
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const [pendingCount, setPendingCount] = useState<number>(0);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
@@ -116,17 +117,23 @@ export default function Header({ user, branch, onLogout, onRefreshData }: Header
 
         {/* User profile & logout */}
         <div className="flex items-center space-x-4 border-l border-slate-800 pl-6">
-          <div className="text-right">
-            <p className="text-sm font-semibold text-white leading-none">
-              {user?.name || "Usuario Nimbo"}
-            </p>
-            <p className="text-xs text-blue-400 mt-1 font-medium bg-blue-950/40 border border-blue-900/30 px-1.5 py-0.5 rounded inline-block">
-              {user?.role || "CAJERO"}
-            </p>
-          </div>
-          <div className="h-9 w-9 bg-slate-800 border border-slate-700 rounded-full flex items-center justify-center">
-            <UserIcon className="h-5 w-5 text-slate-300" />
-          </div>
+          <button
+            onClick={onOpenProfile}
+            className="flex items-center space-x-3 hover:bg-slate-800/60 rounded-xl px-2 py-1.5 -mx-2 transition-colors cursor-pointer text-left"
+            title="Editar mi perfil"
+          >
+            <div className="text-right">
+              <p className="text-sm font-semibold text-white leading-none">
+                {user?.name || "Usuario Nimbo"}
+              </p>
+              <p className="text-xs text-blue-400 mt-1 font-medium bg-blue-950/40 border border-blue-900/30 px-1.5 py-0.5 rounded inline-block">
+                {user?.role || "CAJERO"}
+              </p>
+            </div>
+            <div className="h-9 w-9 bg-slate-800 border border-slate-700 rounded-full flex items-center justify-center">
+              <UserIcon className="h-5 w-5 text-slate-300" />
+            </div>
+          </button>
           <button
             onClick={onLogout}
             className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-950/30 rounded-lg transition-colors"

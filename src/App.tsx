@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import Sidebar from "./components/layout/Sidebar.js";
 import Header from "./components/layout/Header.js";
+import ProfileModal from "./components/layout/ProfileModal.js";
 import DynamicDashboard from "./components/Dashboard/DynamicDashboard.js";
 import ONATReport from "./components/Reports/ONATReport.js";
 import { TransfermovilQRModal } from "./components/POS/TransfermovilQRModal.js";
@@ -82,6 +83,7 @@ export default function App() {
   });
 
   const [currentModule, setCurrentModule] = useState<string>("dashboard");
+  const [profileModalOpen, setProfileModalOpen] = useState<boolean>(false);
 
   // Registration & Login states
   const [emailInput, setEmailInput] = useState<string>("");
@@ -428,6 +430,11 @@ export default function App() {
     sessionStorage.removeItem("nimbo_org");
     try { await fetch("/api/auth/logout", { method: "POST" }); } catch { /* ignore */ }
     triggerToast("Sesión cerrada", "success");
+  };
+
+  const handleUserUpdated = (updatedUser: any) => {
+    setUser(updatedUser);
+    sessionStorage.setItem("nimbo_user_meta", JSON.stringify(updatedUser));
   };
 
   const isSubscriptionExpired = () => {
@@ -1221,10 +1228,19 @@ export default function App() {
       {/* Collapsible Sidebar */}
       <Sidebar currentModule={currentModule} onSelectModule={setCurrentModule} businessType={branch.businessType} userRole={user?.role} />
 
+      {profileModalOpen && (
+        <ProfileModal
+          user={user}
+          onClose={() => setProfileModalOpen(false)}
+          onUserUpdated={handleUserUpdated}
+          triggerToast={triggerToast}
+        />
+      )}
+
       {/* Workspace Area */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
         {/* Dynamic header with network status and branch indicator */}
-        <Header user={user} branch={branch} onLogout={handleLogout} onRefreshData={loadAllData} />
+        <Header user={user} branch={branch} onLogout={handleLogout} onRefreshData={loadAllData} onOpenProfile={() => setProfileModalOpen(true)} />
 
         {/* Scrollable Workspace content */}
         <main className="flex-1 overflow-y-auto p-6 md:p-8 bg-[#0A0A0B]" id="main-workspace">
