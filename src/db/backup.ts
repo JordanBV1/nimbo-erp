@@ -8,7 +8,7 @@ const BACKUP_DIR = path.join(process.cwd(), "db-data", "backups");
 const BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const MAX_BACKUPS = 7;
 
-export function createBackup(): string | null {
+export async function createBackup(): Promise<string | null> {
   try {
     if (!fs.existsSync(DB_PATH)) {
       logger.warn("Backup skipped: database file does not exist");
@@ -21,7 +21,7 @@ export function createBackup(): string | null {
 
     const db = new Database(DB_PATH, { readonly: true });
     try {
-      db.backup(dest);
+      await db.backup(dest);
     } finally {
       db.close();
     }
@@ -51,6 +51,8 @@ export function scheduleBackup(): void {
     return;
   }
   createBackup();
-  setInterval(createBackup, BACKUP_INTERVAL_MS);
+  setInterval(() => {
+    createBackup();
+  }, BACKUP_INTERVAL_MS);
   logger.info({ intervalMs: BACKUP_INTERVAL_MS }, "Backup scheduler started");
 }

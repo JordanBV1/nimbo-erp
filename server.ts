@@ -1704,8 +1704,8 @@ app.post("/api/rrhh/employees", authSub, (req, res) => {
   });
 
   // Backup trigger (admin only)
-  app.post("/api/backup", authenticate, authorize(Role.SUPER_ADMIN), (req, res) => {
-    const dest = createBackup();
+  app.post("/api/backup", authenticate, authorize(Role.SUPER_ADMIN), async (req, res) => {
+    const dest = await createBackup();
     if (!dest) {
       return res.status(500).json({ error: "No se pudo crear el backup" });
     }
