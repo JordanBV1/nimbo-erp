@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from "react";
+import React, { useState } from "react";
 import { Building, CheckCircle2, Smartphone, ArrowRight, LogIn, Store } from "lucide-react";
+import LegalModal, { LegalDoc } from "./LegalModal.js";
 
 interface PricingLandingProps {
   pricing: any;
@@ -16,6 +17,7 @@ export default function PricingLanding({ pricing, onLogin, onRegister }: Pricing
   const base = Number(pricing?.basePrice ?? 5000);
   const perBranch = Number(pricing?.perBranchPrice ?? 1000);
   const phone = pricing?.transfermovilPhone || "+53 51234567";
+  const [legalDoc, setLegalDoc] = useState<LegalDoc | null>(null);
 
   return (
     <div className="w-full max-w-5xl grid lg:grid-cols-2 gap-6 relative z-10 items-stretch">
@@ -106,9 +108,20 @@ export default function PricingLanding({ pricing, onLogin, onRegister }: Pricing
         </button>
 
         <p className="text-[10px] text-slate-500 text-center leading-relaxed">
-          Al crear una cuenta aceptas nuestros términos de servicio y política de privacidad.
+          Al crear una cuenta aceptas nuestros{' '}
+          <button type="button" onClick={() => setLegalDoc("terms")} className="text-blue-400 hover:underline font-semibold cursor-pointer">
+            Términos de Servicio
+          </button>{' '}
+          y nuestra{' '}
+          <button type="button" onClick={() => setLegalDoc("privacy")} className="text-blue-400 hover:underline font-semibold cursor-pointer">
+            Política de Privacidad
+          </button>.
         </p>
       </div>
+
+      {legalDoc && (
+        <LegalModal doc={legalDoc} businessName={pricing?.businessName} onClose={() => setLegalDoc(null)} />
+      )}
     </div>
   );
 }

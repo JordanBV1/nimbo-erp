@@ -46,6 +46,7 @@ import { TransfermovilQRModal } from "./components/POS/TransfermovilQRModal.js";
 import { TransfermovilSettings } from "./components/Settings/TransfermovilSettings.js";
 import ExportData from "./components/Settings/ExportData.js";
 import PricingLanding from "./components/landing/PricingLanding.js";
+import LegalModal, { LegalDoc } from "./components/landing/LegalModal.js";
 import UserManager from "./components/Users/UserManager.js";
 import { offlineQueue } from "./utils/offlineQueue.js";
 import { Role, BusinessType, Currency } from "./types.js";
@@ -88,6 +89,7 @@ export default function App() {
   const [profileModalOpen, setProfileModalOpen] = useState<boolean>(false);
   const [isLanding, setIsLanding] = useState<boolean>(true);
   const [publicPricing, setPublicPricing] = useState<any>({ basePrice: 5000, perBranchPrice: 1000, currency: "CUP", businessName: "Nimbo ERP" });
+  const [legalDoc, setLegalDoc] = useState<LegalDoc | null>(null);
 
   // Registration & Login states
   const [emailInput, setEmailInput] = useState<string>("");
@@ -989,6 +991,16 @@ export default function App() {
                   ¿Olvidaste tu contraseña?
                 </button>
               </p>
+              <p className="text-[10px] text-slate-500 text-center leading-relaxed">
+                Al continuar aceptas nuestros{' '}
+                <button type="button" onClick={() => setLegalDoc("terms")} className="text-blue-400 hover:underline font-semibold cursor-pointer">
+                  Términos de Servicio
+                </button>{' '}
+                y nuestra{' '}
+                <button type="button" onClick={() => setLegalDoc("privacy")} className="text-blue-400 hover:underline font-semibold cursor-pointer">
+                  Política de Privacidad
+                </button>.
+              </p>
             </form>
           ) : (
             <form onSubmit={handleRegister} className="space-y-3">
@@ -1256,6 +1268,10 @@ export default function App() {
           onUserUpdated={handleUserUpdated}
           triggerToast={triggerToast}
         />
+      )}
+
+      {legalDoc && (
+        <LegalModal doc={legalDoc} businessName={publicPricing?.businessName} onClose={() => setLegalDoc(null)} />
       )}
 
       {/* Workspace Area */}
