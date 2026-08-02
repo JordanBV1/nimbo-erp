@@ -641,8 +641,19 @@ async function startServer() {
     }
   });
 
-  app.get("/api/subscription/pricing", authenticate, (req, res) => {
-    const { orgId } = req.query;
+  // --- Public (no auth) pricing ---
+
+  app.get("/api/public/pricing", (_req, res) => {
+    return res.json({
+      basePrice: Number(db.systemSettings.getValue("subscription_base_price", "5000")),
+      perBranchPrice: Number(db.systemSettings.getValue("subscription_per_branch_price", "1000")),
+      currency: "CUP",
+      businessName: db.systemSettings.getValue("business_name", "Nimbo ERP"),
+      transfermovilPhone: db.systemSettings.getValue("transfermovil_phone", "+53 51234567"),
+    });
+  });
+
+  app.get("/api/subscription/pricing", authenticate, (req, res) => {    const { orgId } = req.query;
     if (!orgId) {
       return res.status(400).json({ error: "orgId es requerido" });
     }

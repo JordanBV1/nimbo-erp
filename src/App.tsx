@@ -45,6 +45,7 @@ import ONATReport from "./components/Reports/ONATReport.js";
 import { TransfermovilQRModal } from "./components/POS/TransfermovilQRModal.js";
 import { TransfermovilSettings } from "./components/Settings/TransfermovilSettings.js";
 import ExportData from "./components/Settings/ExportData.js";
+import PricingLanding from "./components/landing/PricingLanding.js";
 import UserManager from "./components/Users/UserManager.js";
 import { offlineQueue } from "./utils/offlineQueue.js";
 import { Role, BusinessType, Currency } from "./types.js";
@@ -85,6 +86,8 @@ export default function App() {
 
   const [currentModule, setCurrentModule] = useState<string>("dashboard");
   const [profileModalOpen, setProfileModalOpen] = useState<boolean>(false);
+  const [isLanding, setIsLanding] = useState<boolean>(true);
+  const [publicPricing, setPublicPricing] = useState<any>({ basePrice: 5000, perBranchPrice: 1000, currency: "CUP", businessName: "Nimbo ERP" });
 
   // Registration & Login states
   const [emailInput, setEmailInput] = useState<string>("");
@@ -329,6 +332,15 @@ export default function App() {
   useEffect(() => {
     loadAllData();
   }, [user]);
+
+  useEffect(() => {
+    fetch("/api/public/pricing")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((p) => {
+        if (p) setPublicPricing(p);
+      })
+      .catch(() => {});
+  }, []);
 
   // Auth Operations
   const handleLogin = async (e: React.FormEvent) => {
@@ -865,6 +877,13 @@ export default function App() {
         <div className="absolute top-0 left-0 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl -translate-x-12 -translate-y-12"></div>
         <div className="absolute bottom-0 right-0 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl translate-x-12 translate-y-12"></div>
 
+        {isLanding ? (
+          <PricingLanding
+            pricing={publicPricing}
+            onLogin={() => { setIsLanding(false); setIsRegistering(false); setAuthError(null); setAuthInfo(null); }}
+            onRegister={() => { setIsLanding(false); setIsRegistering(true); setAuthError(null); setAuthInfo(null); }}
+          />
+        ) : (
         <div className="w-full max-w-md bg-[#121214] border border-slate-800 rounded-3xl p-8 shadow-2xl relative z-10 space-y-6">
           <div className="text-center space-y-2">
             <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-500/10 text-blue-400 border border-blue-500/20 shadow-xl shadow-blue-500/5">
@@ -1059,6 +1078,7 @@ export default function App() {
             </form>
           )}
         </div>
+        )}
       </div>
     );
   }
