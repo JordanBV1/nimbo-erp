@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from "react";
-import { Wifi, WifiOff, RefreshCw, LogOut, Building2, User as UserIcon } from "lucide-react";
+import { Wifi, WifiOff, RefreshCw, LogOut, Building2, User as UserIcon, Menu, LifeBuoy } from "lucide-react";
 import { offlineQueue } from "../../utils/offlineQueue.js";
 
 interface HeaderProps {
@@ -13,9 +13,11 @@ interface HeaderProps {
   onLogout: () => void;
   onRefreshData?: () => void;
   onOpenProfile?: () => void;
+  onToggleSidebar?: () => void;
+  onOpenSupport?: () => void;
 }
 
-export default function Header({ user, branch, onLogout, onRefreshData, onOpenProfile }: HeaderProps) {
+export default function Header({ user, branch, onLogout, onRefreshData, onOpenProfile, onToggleSidebar, onOpenSupport }: HeaderProps) {
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const [pendingCount, setPendingCount] = useState<number>(0);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
@@ -69,6 +71,13 @@ export default function Header({ user, branch, onLogout, onRefreshData, onOpenPr
     <header className="h-16 border-b border-slate-800 bg-[#121214] flex items-center justify-between px-6 z-10" id="app-header">
       {/* Brand / Logo & Branch Name */}
       <div className="flex items-center space-x-3">
+        <button
+          onClick={onToggleSidebar}
+          className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors lg:hidden cursor-pointer"
+          title="Abrir menú"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
         <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white shadow-lg shadow-blue-600/10">N</div>
         <div>
           <h1 className="text-lg font-bold text-white tracking-tight leading-none">
@@ -117,6 +126,13 @@ export default function Header({ user, branch, onLogout, onRefreshData, onOpenPr
 
         {/* User profile & logout */}
         <div className="flex items-center space-x-4 border-l border-slate-800 pl-6">
+          <button
+            onClick={onOpenSupport}
+            className="p-2 text-slate-400 hover:text-blue-400 hover:bg-blue-950/30 rounded-lg transition-colors cursor-pointer"
+            title="Centro de ayuda y soporte"
+          >
+            <LifeBuoy className="h-5 w-5" />
+          </button>
           <button
             onClick={onOpenProfile}
             className="flex items-center space-x-3 hover:bg-slate-800/60 rounded-xl px-2 py-1.5 -mx-2 transition-colors cursor-pointer text-left"

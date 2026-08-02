@@ -17,7 +17,7 @@ import { db, initializeDatabase } from "./src/db/db.js";
 import { Role, BusinessType, Currency } from "./src/types.js";
 import { logger, httpLogger } from "./src/logger.js";
 import { scheduleBackup, createBackup } from "./src/db/backup.js";
-import { sendPasswordResetEmail } from "./src/mailer.js";
+import { sendPasswordResetEmail, sendMail } from "./src/mailer.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const JWT_SECRET = process.env.JWT_SECRET || (() => {
@@ -1779,6 +1779,55 @@ app.post("/api/rrhh/employees", authSub, (req, res) => {
       logAudit(userId || req.user!.userId, "UPDATE_SETTINGS", "SystemSetting", "all", JSON.stringify(settings));
     }
     return res.json({ success: true });
+  });
+
+  app.post("/api/onboarding/dismiss", authSub, (req, res) => {
+    db.systemSettings.setValue("onboarding_done", "1");
+    logAudit(req.user!.userId, "ONBOARDING_DISMISSED", "SystemSetting", "onboarding_done");
+    return res.json({ success: true });
+  });
+
+  const supportTicketSchema = z.object({
+    subject: z.string().min(1, "Asunto requerido").max(120),
+    message: z.string().min(10, "Describe tu consulta con al menos 10 caracteres").max(3000),
+  });
+
+  app.post("/api/support/ticket", authSub, async (req, res) => {
+    const parsed = supportTicketSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.errors[0].message });
+    }
+    const { subject, message } = parsed.data;
+    const user = db.users.findById(req.user!.userId);
+    if (!user) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+    const ticket = db.supportTickets.create({
+      userId: user.id,
+      userName: user.name,
+      userEmail: user.email,
+      organizationId: req.user!.userId ? db.users.findById(req.user!.userId)?.branchId || "" : "",
+      subject,
+      message,
+    });
+    logAudit(user.id, "SUPPORT_TICKET", "SupportTicket", ticket.id, `Tu ticket "${subject}" (id: ${ticket.id})`);
+
+    const supportDestination = db.systemSettings.getValue("support_email", "");
+    if (supportDestination && supportDestination.includes("@")) {
+      const sent = await sendMail(
+        supportDestination,
+        `[Nimbo ERP] Soporte: ${subject} (${user.email})`,
+        `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;background:#0A0A0B;border-radius:12px;">` +
+          `<p style="color:#cbd5e1;font-size:14px;">Nuevo ticket de <strong style="color:#fff;">${user.name}</strong> (${user.email})</p>` +
+          `<div style="background:#151518;border:1px solid #1e293b;border-radius:8px;padding:16px;color:#e2e8f0;font-size:13px;line-height:1.6;">${message.replace(/</g, "&lt;")}</div>` +
+          `<p style="color:#94a3b8;font-size:12px;">Ticket ID: ${ticket.id}</p></div>`
+      );
+      if (!sent) {
+        logger.warn({ ticketId: ticket.id }, "Support SMTP not configured — ticket saved locally");
+      }
+    }
+
+    return res.status(201).json({ success: true, ticket });
   });
 
   // --- ONAT Report ---

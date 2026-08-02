@@ -279,6 +279,12 @@ export function initializeDatabase() {
       token TEXT NOT NULL, expires_at TEXT NOT NULL,
       used INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS support_tickets (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL,
+      user_name TEXT, user_email TEXT, organization_id TEXT,
+      subject TEXT NOT NULL, message TEXT NOT NULL,
+      status TEXT DEFAULT 'open', created_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   // --- Migration: add organization_id to existing tables ---
@@ -1078,5 +1084,14 @@ export const db = {
     findValid: (userId: string, token: string) => toCamel(firstRow<any>(getDb().prepare(`SELECT * FROM password_reset_tokens WHERE user_id = ? AND token = ? AND used = 0 AND expires_at > strftime('%Y-%m-%dT%H:%M:%fZ','now') ORDER BY created_at DESC LIMIT 1`), [userId, token])),
     markUsed: (id: string) => { getDb().prepare("UPDATE password_reset_tokens SET used = 1 WHERE id = ?").run(id); },
     invalidateForUser: (userId: string) => { getDb().prepare("UPDATE password_reset_tokens SET used = 1 WHERE user_id = ?").run(userId); },
+  },
+  supportTickets: {
+    create: (data: any) => {
+      const id = generateId();
+      getDb().prepare(`INSERT INTO support_tickets (id, user_id, user_name, user_email, organization_id, subject, message, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.userId, data.userName || "", data.userEmail || "", data.organizationId || "", data.subject, data.message, data.status || "open");
+      return { id, ...data, createdAt: new Date().toISOString() };
+    },
+    findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM support_tickets ORDER BY created_at DESC"))),
+    updateStatus: (id: string, status: string) => { getDb().prepare("UPDATE support_tickets SET status = ? WHERE id = ?").run(status, id); },
   },
 };

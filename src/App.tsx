@@ -47,6 +47,8 @@ import { TransfermovilSettings } from "./components/Settings/TransfermovilSettin
 import ExportData from "./components/Settings/ExportData.js";
 import PricingLanding from "./components/landing/PricingLanding.js";
 import LegalModal, { LegalDoc } from "./components/landing/LegalModal.js";
+import OnboardingModal from "./components/layout/OnboardingModal.js";
+import SupportModal from "./components/layout/SupportModal.js";
 import UserManager from "./components/Users/UserManager.js";
 import { offlineQueue } from "./utils/offlineQueue.js";
 import { Role, BusinessType, Currency } from "./types.js";
@@ -71,6 +73,7 @@ window.fetch = async (...args) => {
 };
 
 export default function App() {
+  const onboardingCheckedRef = React.useRef<boolean>(false);
   // Authentication & Branch states (restored from sessionStorage only for non-sensitive metadata)
   const [user, setUser] = useState<any>(() => {
     const val = sessionStorage.getItem("nimbo_user_meta");
@@ -87,6 +90,9 @@ export default function App() {
 
   const [currentModule, setCurrentModule] = useState<string>("dashboard");
   const [profileModalOpen, setProfileModalOpen] = useState<boolean>(false);
+  const [sidebarMobileOpen, setSidebarMobileOpen] = useState<boolean>(false);
+  const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
+  const [supportModalOpen, setSupportModalOpen] = useState<boolean>(false);
   const [isLanding, setIsLanding] = useState<boolean>(true);
   const [publicPricing, setPublicPricing] = useState<any>({ basePrice: 5000, perBranchPrice: 1000, currency: "CUP", businessName: "Nimbo ERP" });
   const [legalDoc, setLegalDoc] = useState<LegalDoc | null>(null);
@@ -274,6 +280,13 @@ export default function App() {
         if (phoneSetting) setTransfermovilPhone(phoneSetting.value);
         const enzonaSetting = confData.settings.find((s: any) => s.key === "enzona_user");
         if (enzonaSetting) setEnzonaUser(enzonaSetting.value);
+        if (!onboardingCheckedRef.current) {
+          onboardingCheckedRef.current = true;
+          const onboardingSetting = confData.settings.find((s: any) => s.key === "onboarding_done");
+          if (!onboardingSetting || onboardingSetting.value !== "1") {
+            setShowOnboarding(true);
+          }
+        }
       }
 
       // Sessions
@@ -450,6 +463,14 @@ export default function App() {
   const handleUserUpdated = (updatedUser: any) => {
     setUser(updatedUser);
     sessionStorage.setItem("nimbo_user_meta", JSON.stringify(updatedUser));
+  };
+
+  const handleOnboardingDone = async () => {
+    setShowOnboarding(false);
+    try {
+      await fetch("/api/onboarding/dismiss", { method: "POST" });
+    } catch { /* ignore */ }
+    triggerToast("¡Listo! Ya puedes operar tu negocio", "success");
   };
 
   const isSubscriptionExpired = () => {
@@ -1259,7 +1280,14 @@ export default function App() {
       )}
 
       {/* Collapsible Sidebar */}
-      <Sidebar currentModule={currentModule} onSelectModule={setCurrentModule} businessType={branch.businessType} userRole={user?.role} />
+      <Sidebar
+        currentModule={currentModule}
+        onSelectModule={setCurrentModule}
+        businessType={branch.businessType}
+        userRole={user?.role}
+        mobileOpen={sidebarMobileOpen}
+        onCloseMobile={() => setSidebarMobileOpen(false)}
+      />
 
       {profileModalOpen && (
         <ProfileModal
@@ -1274,10 +1302,27 @@ export default function App() {
         <LegalModal doc={legalDoc} businessName={publicPricing?.businessName} onClose={() => setLegalDoc(null)} />
       )}
 
+      {showOnboarding && (
+        <OnboardingModal
+          onComplete={handleOnboardingDone}
+          onSkip={handleOnboardingDone}
+        />
+      )}
+
+      {supportModalOpen && (
+        <SupportModal
+          user={user}
+          org={org}
+          transfermovilPhone={transfermovilPhone}
+          triggerToast={triggerToast}
+          onClose={() => setSupportModalOpen(false)}
+        />
+      )}
+
       {/* Workspace Area */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
         {/* Dynamic header with network status and branch indicator */}
-        <Header user={user} branch={branch} onLogout={handleLogout} onRefreshData={loadAllData} onOpenProfile={() => setProfileModalOpen(true)} />
+        <Header user={user} branch={branch} onLogout={handleLogout} onRefreshData={loadAllData} onOpenProfile={() => setProfileModalOpen(true)} onToggleSidebar={() => setSidebarMobileOpen(true)} onOpenSupport={() => setSupportModalOpen(true)} />
 
         {/* Scrollable Workspace content */}
         <main className="flex-1 overflow-y-auto p-6 md:p-8 bg-[#0A0A0B]" id="main-workspace">
