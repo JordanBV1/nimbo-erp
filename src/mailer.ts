@@ -70,3 +70,19 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
   `;
   return sendMail(to, "Restablecer contraseña — Nimbo ERP", html);
 }
+
+export async function sendSubscriptionReminderEmail(to: string, orgName: string, daysLeft: number, payUrl: string): Promise<boolean> {
+  const when = daysLeft <= 0 ? "hoy" : `en ${daysLeft} día${daysLeft === 1 ? "" : "s"}`;
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;background:#0A0A0B;border-radius:12px;">
+      <h2 style="color:#fff;margin-bottom:16px;">Tu suscripción expira ${when}</h2>
+      <p style="color:#cbd5e1;font-size:14px;line-height:1.6;">La suscripción de <strong style="color:#fff;">${orgName}</strong> en <strong style="color:#fff;">Nimbo ERP</strong> está por vencer.</p>
+      <p style="color:#cbd5e1;font-size:14px;line-height:1.6;">Renueva antes del vencimiento para no interrumpir el acceso a tu sistema.</p>
+      <div style="text-align:center;margin:28px 0;">
+        <a href="${payUrl}" style="background:#3b82f6;color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:bold;font-size:14px;">Renovar suscripción</a>
+      </div>
+      <p style="color:#64748b;font-size:12px;">Si ya realizaste el pago, ignora este correo.</p>
+    </div>
+  `;
+  return sendMail(to, `Tu suscripción Nimbo ERP expira ${when}`, html);
+}

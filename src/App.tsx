@@ -49,6 +49,7 @@ import PricingLanding from "./components/landing/PricingLanding.js";
 import LegalModal, { LegalDoc } from "./components/landing/LegalModal.js";
 import OnboardingModal from "./components/layout/OnboardingModal.js";
 import SupportModal from "./components/layout/SupportModal.js";
+import SubscriptionReceipt, { PaymentReceiptData } from "./components/layout/SubscriptionReceipt.js";
 import UserManager from "./components/Users/UserManager.js";
 import { offlineQueue } from "./utils/offlineQueue.js";
 import { Role, BusinessType, Currency } from "./types.js";
@@ -93,6 +94,7 @@ export default function App() {
   const [sidebarMobileOpen, setSidebarMobileOpen] = useState<boolean>(false);
   const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
   const [supportModalOpen, setSupportModalOpen] = useState<boolean>(false);
+  const [paymentReceipt, setPaymentReceipt] = useState<PaymentReceiptData | null>(null);
   const [isLanding, setIsLanding] = useState<boolean>(true);
   const [publicPricing, setPublicPricing] = useState<any>({ basePrice: 5000, perBranchPrice: 1000, currency: "CUP", businessName: "Nimbo ERP" });
   const [legalDoc, setLegalDoc] = useState<LegalDoc | null>(null);
@@ -522,6 +524,9 @@ export default function App() {
         triggerToast("¡Suscripción activada/renovada con éxito!", "success");
         setPaymentTxId("");
         setPaymentPhone("");
+        if (data.receipt) {
+          setPaymentReceipt(data.receipt);
+        }
         await fetchSubscriptionPayments(data.organization.id);
       } else {
         const err = await res.json();
@@ -1316,6 +1321,14 @@ export default function App() {
           transfermovilPhone={transfermovilPhone}
           triggerToast={triggerToast}
           onClose={() => setSupportModalOpen(false)}
+        />
+      )}
+
+      {paymentReceipt && (
+        <SubscriptionReceipt
+          receipt={paymentReceipt}
+          onClose={() => setPaymentReceipt(null)}
+          triggerToast={triggerToast}
         />
       )}
 

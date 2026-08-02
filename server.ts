@@ -17,7 +17,7 @@ import { db, initializeDatabase } from "./src/db/db.js";
 import { Role, BusinessType, Currency } from "./src/types.js";
 import { logger, httpLogger } from "./src/logger.js";
 import { scheduleBackup, createBackup } from "./src/db/backup.js";
-import { sendPasswordResetEmail, sendMail } from "./src/mailer.js";
+import { sendPasswordResetEmail, sendMail, sendSubscriptionReminderEmail } from "./src/mailer.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const JWT_SECRET = process.env.JWT_SECRET || (() => {
@@ -713,8 +713,9 @@ async function startServer() {
     const auditUserId = userId || req.user!.userId;
     logAudit(auditUserId, "PAY_SUBSCRIPTION", "Organization", orgId, `Paid ${amount} CUP via ${platform} with TxId: ${transactionId}`);
 
+    let paymentRecord: any = null;
     try {
-      db.subscriptionPayments.create({
+      paymentRecord = db.subscriptionPayments.create({
         organizationId: orgId,
         amount: Number(amount),
         currency: Currency.CUP,
@@ -745,10 +746,28 @@ async function startServer() {
       logger.error({ err: e }, "Failed to log subscription to journal");
     }
 
+    const payer = db.users.findById(auditUserId);
+    const branchCount = orgBranchIds.size;
+
     return res.json({
       success: true,
       message: "Pago registrado con éxito. Suscripción renovada por 30 días.",
       organization: updatedOrg,
+      receipt: {
+        paymentId: paymentRecord?.id || null,
+        orgName: org.name,
+        businessName: db.systemSettings.getValue("business_name", "Nimbo ERP"),
+        amount: Number(amount),
+        currency: "CUP",
+        platform,
+        transactionId,
+        phone: phone || "",
+        date: new Date().toISOString(),
+        expiresAt: expires.toISOString(),
+        payerName: payer?.name || "",
+        payerEmail: payer?.email || "",
+        branchCount,
+      },
     });
   });
 
@@ -1921,7 +1940,50 @@ app.post("/api/rrhh/employees", authSub, (req, res) => {
   app.listen(PORT, "0.0.0.0", () => {
     logger.info({ port: PORT, nodeEnv: process.env.NODE_ENV }, "Full-Stack ERP/POS server running");
     scheduleBackup();
+    scheduleSubscriptionReminders();
   });
+}
+
+const REMINDER_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
+function scheduleSubscriptionReminders(): void {
+  const run = async () => {
+    try {
+      const orgs = db.organizations.findMany().filter((o: any) => o.subscriptionStatus === "active");
+      for (const org of orgs) {
+        if (!org.subscriptionExpiresAt) continue;
+        const expires = new Date(org.subscriptionExpiresAt).getTime();
+        const now = Date.now();
+        const daysLeft = Math.ceil((expires - now) / (24 * 60 * 60 * 1000));
+        if (daysLeft < 0 || daysLeft > 7) continue;
+
+        const reminderKey = `subscription_reminder_sent_${org.id}`;
+        const lastSent = db.systemSettings.getValue(reminderKey, "");
+        const today = new Date().toISOString().slice(0, 10);
+        if (lastSent === `${today}_${expires}`) continue;
+
+        const orgBranchIds = new Set(db.branches.findMany().filter((b: any) => b.organizationId === org.id).map((b: any) => b.id));
+        const orgUsers = db.users.findMany().filter((u: any) => orgBranchIds.has(u.branchId));
+        const payUrl = `${process.env.APP_URL || `http://localhost:${PORT}`}/?module=suscripcion`;
+        let anySent = false;
+        for (const user of orgUsers) {
+          if (!user.email) continue;
+          const sent = await sendSubscriptionReminderEmail(user.email, org.name, daysLeft, payUrl);
+          anySent = anySent || sent;
+        }
+        if (anySent) {
+          db.systemSettings.setValue(reminderKey, `${today}_${expires}`);
+          logger.info({ orgId: org.id, daysLeft }, "Subscription reminder emails sent");
+        } else {
+          logger.warn({ orgId: org.id }, "SMTP not configured — subscription reminder not sent");
+        }
+      }
+    } catch (err) {
+      logger.error({ err }, "Subscription reminder scheduler error");
+    }
+  };
+  run();
+  setInterval(run, REMINDER_INTERVAL_MS);
 }
 
 startServer();
