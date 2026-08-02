@@ -44,6 +44,7 @@ import DynamicDashboard from "./components/Dashboard/DynamicDashboard.js";
 import ONATReport from "./components/Reports/ONATReport.js";
 import { TransfermovilQRModal } from "./components/POS/TransfermovilQRModal.js";
 import { TransfermovilSettings } from "./components/Settings/TransfermovilSettings.js";
+import ExportData from "./components/Settings/ExportData.js";
 import UserManager from "./components/Users/UserManager.js";
 import { offlineQueue } from "./utils/offlineQueue.js";
 import { Role, BusinessType, Currency } from "./types.js";
@@ -3022,6 +3023,32 @@ export default function App() {
                 org={org}
                 triggerToast={triggerToast}
                 onRefreshData={loadAllData}
+              />
+
+              {/* Data Export */}
+              <ExportData
+                triggerToast={triggerToast}
+                datasets={[
+                  { label: "Productos", data: products },
+                  { label: "Categorías", data: categories },
+                  { label: "Inventario (Stock)", data: stocks },
+                  { label: "Almacenes", data: warehouses },
+                  { label: "Ventas", data: sales },
+                  { label: "Pedidos", data: orders },
+                  { label: "Clientes", data: customers },
+                  { label: "Proveedores", data: suppliers },
+                  { label: "Órdenes de Compra", data: purchaseOrders },
+                  { label: "Facturas", data: invoices },
+                  { label: "Recetas", data: recipes },
+                  { label: "Órdenes de Producción", data: productionOrders },
+                  { label: "Plan de Cuentas", data: accounts },
+                  { label: "Asientos Contables", data: journalEntries },
+                  { label: "Transacciones de Caja", data: cashTransactions },
+                  { label: "Empleados", data: employees },
+                  { label: "Locales / Sucursales", data: branches },
+                  { label: "Auditoría", data: auditLogs },
+                  { label: "Pagos de Suscripción", data: subscriptionPayments },
+                ]}
               />
             </div>
           )}
