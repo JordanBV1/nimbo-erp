@@ -1,10 +1,13 @@
-import { beforeAll, afterAll } from "vitest";
+import fs from "fs";
+import path from "path";
 
-beforeAll(() => {
-  process.env.NODE_ENV = "test";
-  process.env.JWT_SECRET = "test-secret-key";
-});
+const TEST_DB = path.join(process.cwd(), "db-data", "nimbo-test.db");
 
-afterAll(() => {
-  // cleanup
-});
+process.env.NODE_ENV = "test";
+process.env.JWT_SECRET = "test-secret-key";
+process.env.DB_PATH = TEST_DB;
+process.env.APP_URL = "http://localhost:3000";
+
+if (fs.existsSync(TEST_DB)) {
+  fs.rmSync(TEST_DB, { force: true });
+}

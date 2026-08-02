@@ -215,9 +215,9 @@ const saleSchema = z.object({
   loyaltyPointsRedeemed: z.number().optional(),
 });
 
-async function startServer() {
-  const app = express();
+export const app = express();
 
+async function startServer() {
   app.set("trust proxy", 1);
 
   // Security middleware
@@ -1920,7 +1920,7 @@ app.post("/api/rrhh/employees", authSub, (req, res) => {
 
   // --- Vite / Static Serving ---
 
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV === "development") {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -1928,7 +1928,7 @@ app.post("/api/rrhh/employees", authSub, (req, res) => {
     });
     app.use(vite.middlewares);
     logger.info("Vite development middleware integrated.");
-  } else {
+  } else if (process.env.NODE_ENV === "production") {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (_req, res) => {
@@ -1937,11 +1937,13 @@ app.post("/api/rrhh/employees", authSub, (req, res) => {
     logger.info("Serving production static files from dist.");
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    logger.info({ port: PORT, nodeEnv: process.env.NODE_ENV }, "Full-Stack ERP/POS server running");
-    scheduleBackup();
-    scheduleSubscriptionReminders();
-  });
+  if (process.env.NODE_ENV !== "test") {
+    app.listen(PORT, "0.0.0.0", () => {
+      logger.info({ port: PORT, nodeEnv: process.env.NODE_ENV }, "Full-Stack ERP/POS server running");
+      scheduleBackup();
+      scheduleSubscriptionReminders();
+    });
+  }
 }
 
 const REMINDER_INTERVAL_MS = 6 * 60 * 60 * 1000;

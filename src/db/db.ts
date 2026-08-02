@@ -7,7 +7,7 @@ import {
 } from "../types.js";
 import { logger } from "../logger.js";
 
-const DB_PATH = path.join(process.cwd(), "db-data", "nimbo.db");
+const DB_PATH = process.env.DB_PATH || path.join(process.cwd(), "db-data", "nimbo.db");
 
 let _sql: Database.Database;
 
