@@ -34,6 +34,9 @@ function getTransporter(): nodemailer.Transporter | null {
       port: cfg.port,
       secure: cfg.secure,
       auth: cfg.user ? { user: cfg.user, pass: cfg.pass } : undefined,
+      connectionTimeout: 15000,
+      greetingTimeout: 15000,
+      socketTimeout: 15000,
     });
   }
   return transporter;
