@@ -6,6 +6,9 @@ import {
   Role, BusinessType, Currency
 } from "../types.js";
 import { logger } from "../logger.js";
+import { pgDb, initializeDatabasePg } from "./pg-db.js";
+
+export const USE_PG = !!process.env.DATABASE_URL;
 
 const DB_PATH = process.env.DB_PATH || path.join(process.cwd(), "db-data", "nimbo.db");
 
@@ -62,8 +65,8 @@ function createCRUD<T extends { id: string }>(tableName: string, extraFields: st
   };
 }
 
-// --- Static schema definition & migration ---
-export function initializeDatabase() {
+// --- Static schema definition & migration (SQLite) ---
+export function initializeSqliteDatabase() {
   const sql = getDb();
 
   sql.exec(`
@@ -517,8 +520,8 @@ function rowsToCamel(rows: Record<string, any>[]): any[] {
 
 export const getRawDb = getDb;
 
-// --- Collection-style API (backward compatible) ---
-export const db = {
+// --- Legacy SQLite collection API (fallback when DATABASE_URL is not set) ---
+const sqliteDb = {
   organizations: {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM organizations"))),
     findById: (id: string) => toCamel(firstRow<any>(getDb().prepare("SELECT * FROM organizations WHERE id = ?"), [id])),
@@ -1095,3 +1098,36 @@ export const db = {
     updateStatus: (id: string, status: string) => { getDb().prepare("UPDATE support_tickets SET status = ? WHERE id = ?").run(status, id); },
   },
 };
+
+function promisifyCollection(obj: any): any {
+  if (obj === null || typeof obj !== "object") return obj;
+  const out: any = {};
+  for (const key of Object.keys(obj)) {
+    const v = obj[key];
+    if (typeof v === "function") {
+      out[key] = function (...args: any[]) {
+        return Promise.resolve().then(() => Reflect.apply(v, obj, args));
+      };
+    } else if (v && typeof v === "object") {
+      out[key] = promisifyCollection(v);
+    } else {
+      out[key] = v;
+    }
+  }
+  return out;
+}
+
+// --- Dispatch: Postgres (Supabase) when DATABASE_URL is set, else SQLite ---
+export const db: typeof sqliteDb = USE_PG ? (pgDb as any) : (promisifyCollection(sqliteDb) as any);
+
+function initializeSqlite() {
+  initializeSqliteDatabase();
+}
+
+export async function initializeDatabase(): Promise<void> {
+  if (USE_PG) {
+    await initializeDatabasePg();
+  } else {
+    initializeSqlite();
+  }
+}

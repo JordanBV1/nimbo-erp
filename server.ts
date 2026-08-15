@@ -85,18 +85,26 @@ function resolveOrg(req: express.Request, res: express.Response, next: express.N
     return res.status(401).json({ error: "No autenticado" });
   }
   try {
-    const branch = db.branches.findById(req.user.branchId);
-    if (!branch) {
-      return res.status(404).json({ error: "Sucursal no encontrada" });
-    }
-    const org = db.organizations.findById(branch.organizationId);
-    if (!org) {
-      return res.status(404).json({ error: "Organización no encontrada" });
-    }
-    req.org = org;
-    req.orgId = org.id;
-    next();
-  } catch (e) {
+    db.branches.findById(req.user.branchId).then((branch: any) => {
+      if (!branch) {
+        return res.status(404).json({ error: "Sucursal no encontrada" });
+      }
+      db.organizations.findById(branch.organizationId).then((org: any) => {
+        if (!org) {
+          return res.status(404).json({ error: "Organización no encontrada" });
+        }
+        req.org = org;
+        req.orgId = org.id;
+        next();
+      }).catch((e: any) => {
+        logger.error({ err: e }, "resolveOrg failed");
+        return res.status(500).json({ error: "Error al resolver organización" });
+      });
+    }).catch((e: any) => {
+      logger.error({ err: e }, "resolveOrg failed");
+      return res.status(500).json({ error: "Error al resolver organización" });
+    });
+  } catch (e: any) {
     logger.error({ err: e }, "resolveOrg failed");
     return res.status(500).json({ error: "Error al resolver organización" });
   }
@@ -110,8 +118,13 @@ function requireSubscription(req: express.Request, res: express.Response, next: 
     return res.status(402).json({ error: "Suscripción vencida. Renueva tu plan para continuar." });
   }
   if (req.org.subscriptionExpiresAt && new Date(req.org.subscriptionExpiresAt) < new Date()) {
-    db.organizations.update(req.org.id, { subscriptionStatus: "expired" });
-    return res.status(402).json({ error: "Suscripción vencida. Renueva tu plan para continuar." });
+    db.organizations.update(req.org.id, { subscriptionStatus: "expired" }).then(() => {
+      res.status(402).json({ error: "Suscripción vencida. Renueva tu plan para continuar." });
+    }).catch((e: any) => {
+      logger.error({ err: e }, "requireSubscription failed");
+      res.status(500).json({ error: "Error interno del servidor" });
+    });
+    return;
   }
   next();
 }
@@ -126,15 +139,18 @@ function authSub(req: express.Request, res: express.Response, next: express.Next
 
 function logAudit(userId: string, action: string, entity: string, entityId?: string, changes?: string) {
   try {
-    db.auditLogs.create({ userId, action, entity, entityId, changes });
-  } catch (e) {
+    db.auditLogs.create({ userId, action, entity, entityId, changes }).catch((e: any) => {
+      logger.error({ err: e }, "Audit logging failed");
+    });
+  } catch (e: any) {
     logger.error({ err: e }, "Audit logging failed");
   }
 }
 
-function isBranchInOrg(branchId: string, orgId: string): boolean {
-  const branch = db.branches.findById(branchId);
-  return !!branch && branch.organizationId === orgId;
+function isBranchInOrg(branchId: string, orgId: string): Promise<boolean> {
+  return db.branches.findById(branchId).then((branch: any) => {
+    return !!branch && branch.organizationId === orgId;
+  }).catch(() => false);
 }
 
 function isOrgMatch(orgId: string, req: express.Request): boolean {
@@ -270,17 +286,17 @@ async function startServer() {
   });
 
   try {
-    initializeDatabase();
+    await initializeDatabase();
   } catch (err) {
     logger.error({ err }, "Database initialization failed");
   }
 
   // Health check
-  app.get("/api/health", (_req, res) => {
+  app.get("/api/health", async (_req, res) => {
     let dbOk = false;
     let dbError: string | null = null;
     try {
-      dbOk = (db.organizations.findMany().length >= 0);
+      dbOk = ((await db.organizations.findMany()).length >= 0);
     } catch (e: any) {
       dbError = e?.message || "unknown";
     }
@@ -321,7 +337,7 @@ async function startServer() {
     }
     const { email, password } = parsed.data;
 
-    const user = db.users.findByEmail(email);
+    const user = await db.users.findByEmail(email);
     if (!user) {
       return res.status(401).json({ error: "Credenciales incorrectas" });
     }
@@ -334,8 +350,8 @@ async function startServer() {
       return res.status(401).json({ error: "Credenciales incorrectas" });
     }
 
-    const branch = db.branches.findById(user.branchId);
-    const org = branch ? db.organizations.findById(branch.organizationId) : null;
+    const branch = await db.branches.findById(user.branchId);
+    const org = branch ? await db.organizations.findById(branch.organizationId) : null;
 
     const token = generateToken({
       userId: user.id,
@@ -370,21 +386,21 @@ async function startServer() {
     }
     const { orgName, branchName, userName, email, password, businessType } = parsed.data;
 
-    const existing = db.users.findByEmail(email);
+    const existing = await db.users.findByEmail(email);
     if (existing) {
       return res.status(400).json({ error: "El correo electrónico ya está registrado" });
     }
 
     const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
 
-    const org = db.organizations.create({ name: orgName });
-    const branch = db.branches.create({
+    const org = await db.organizations.create({ name: orgName });
+    const branch = await db.branches.create({
       organizationId: org.id,
       name: branchName,
       address: "Dirección de registro",
       businessType: businessType || BusinessType.GENERAL,
     });
-    const user = db.users.create({
+    const user = await db.users.create({
       name: userName,
       email,
       password: hashedPassword,
@@ -392,7 +408,7 @@ async function startServer() {
       branchId: branch.id,
     });
 
-    db.warehouses.create({
+    await db.warehouses.create({
       name: `Almacén Principal ${branchName}`,
       branchId: branch.id,
       address: "Almacén por defecto",
@@ -425,7 +441,7 @@ async function startServer() {
     });
   });
 
-  app.post("/api/auth/logout", (_req, res) => {
+  app.post("/api/auth/logout", async (_req, res) => {
     res.clearCookie("token");
     return res.json({ success: true });
   });
@@ -445,7 +461,7 @@ async function startServer() {
       return res.status(400).json({ error: parsed.error.errors[0].message });
     }
     const { email } = parsed.data;
-    const user = db.users.findByEmail(email);
+    const user = await db.users.findByEmail(email);
 
     // Always respond the same way to avoid user enumeration
     if (!user) {
@@ -454,8 +470,8 @@ async function startServer() {
 
     const token = crypto.randomBytes(32).toString("hex");
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-    db.passwordResetTokens.invalidateForUser(user.id);
-    db.passwordResetTokens.create({ userId: user.id, token, expiresAt, used: false });
+    await db.passwordResetTokens.invalidateForUser(user.id);
+    await db.passwordResetTokens.create({ userId: user.id, token, expiresAt, used: false });
 
     const baseUrl = process.env.APP_URL || `http://localhost:${PORT}`;
     const resetUrl = `${baseUrl}/reset-password?token=${token}`;
@@ -481,8 +497,8 @@ async function startServer() {
     }
     const { token, password } = parsed.data;
 
-    const user = db.users.findMany().find((u: any) => {
-      const valid = db.passwordResetTokens.findValid(u.id, token);
+    const user = await (await db.users.findMany()).find(async (u: any) => {
+      const valid = await db.passwordResetTokens.findValid(u.id, token);
       return !!valid;
     });
 
@@ -490,18 +506,18 @@ async function startServer() {
       return res.status(400).json({ error: "Enlace inválido o expirado. Solicita uno nuevo." });
     }
 
-    const valid = db.passwordResetTokens.findValid(user.id, token);
+    const valid = await db.passwordResetTokens.findValid(user.id, token);
     const hashed = await bcrypt.hash(password, SALT_ROUNDS);
-    db.users.update(user.id, { password: hashed });
-    db.passwordResetTokens.markUsed(valid.id);
-    db.passwordResetTokens.invalidateForUser(user.id);
+    await db.users.update(user.id, { password: hashed });
+    await db.passwordResetTokens.markUsed(valid.id);
+    await db.passwordResetTokens.invalidateForUser(user.id);
     logAudit(user.id, "PASSWORD_RESET", "User", user.id);
 
     return res.json({ success: true, message: "Contraseña restablecida correctamente. Ya puedes iniciar sesión." });
   });
 
-  app.get("/api/auth/me", authenticate, (req, res) => {
-    const user = db.users.findById(req.user!.userId);
+  app.get("/api/auth/me", authenticate, async (req, res) => {
+    const user = await db.users.findById(req.user!.userId);
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
     const { password: _pw, ...safeUser } = user;
     return res.json(safeUser);
@@ -521,7 +537,7 @@ async function startServer() {
     }
     const { name, email, currentPassword, newPassword } = parsed.data;
 
-    const existing = db.users.findById(req.user!.userId);
+    const existing = await db.users.findById(req.user!.userId);
     if (!existing) {
       return res.status(404).json({ error: "Usuario no encontrado" });
     }
@@ -538,7 +554,7 @@ async function startServer() {
     }
 
     if (email && email.trim().toLowerCase() !== existing.email.toLowerCase()) {
-      const other = db.users.findByEmail(email);
+      const other = await db.users.findByEmail(email);
       if (other) {
         return res.status(400).json({ error: "El nuevo correo ya está en uso por otro usuario" });
       }
@@ -549,36 +565,36 @@ async function startServer() {
     if (email !== undefined) updateData.email = email.trim().toLowerCase();
     if (newPassword) updateData.password = await bcrypt.hash(newPassword, SALT_ROUNDS);
 
-    const updatedUser = db.users.update(existing.id, updateData);
+    const updatedUser = await db.users.update(existing.id, updateData);
     logAudit(req.user!.userId, "UPDATE_PROFILE", "User", existing.id, `Perfil actualizado por el propio usuario`);
     const { password: _pw, ...safeUser } = updatedUser;
     return res.json({ success: true, user: safeUser });
   });
 
-  app.get("/api/auth/organization", authenticate, (req, res) => {
+  app.get("/api/auth/organization", authenticate, async (req, res) => {
     const { orgId } = req.query;
     if (!orgId) {
       return res.status(400).json({ error: "orgId es requerido" });
     }
-    const org = db.organizations.findById(orgId as string);
+    const org = await db.organizations.findById(orgId as string);
     if (!org) {
       return res.status(404).json({ error: "Organización no encontrada" });
     }
-    const orgBranchIds = new Set(db.branches.findMany().filter((b: any) => b.organizationId === org.id).map((b: any) => b.id));
+    const orgBranchIds = new Set((await db.branches.findMany()).filter((b: any) => b.organizationId === org.id).map((b: any) => b.id));
     if (!orgBranchIds.has(req.user!.branchId)) {
       return res.status(403).json({ error: "No tienes acceso a esta organización" });
     }
     return res.json(org);
   });
 
-  app.get("/api/branches", authenticate, (req, res) => {
+  app.get("/api/branches", authenticate, async (req, res) => {
     const { orgId } = req.query;
     if (!orgId) return res.status(400).json({ error: "orgId es requerido" });
-    const orgBranchIds = new Set(db.branches.findMany().filter((b: any) => b.organizationId === orgId).map((b: any) => b.id));
+    const orgBranchIds = new Set((await db.branches.findMany()).filter((b: any) => b.organizationId === orgId).map((b: any) => b.id));
     if (!orgBranchIds.has(req.user!.branchId)) {
       return res.status(403).json({ error: "No tienes acceso a esta organización" });
     }
-    const all = db.branches.findMany();
+    const all = await db.branches.findMany();
     const filtered = all.filter((b: any) => b.organizationId === orgId);
     return res.json(filtered);
   });
@@ -590,23 +606,23 @@ async function startServer() {
     }
     const { name, address, businessType, organizationId } = parsed.data;
 
-    const org = db.organizations.findById(organizationId);
+    const org = await db.organizations.findById(organizationId);
     if (!org) {
       return res.status(404).json({ error: "Organización no encontrada" });
     }
-    const orgBranchIds = new Set(db.branches.findMany().filter((b: any) => b.organizationId === org.id).map((b: any) => b.id));
+    const orgBranchIds = new Set((await db.branches.findMany()).filter((b: any) => b.organizationId === org.id).map((b: any) => b.id));
     if (!orgBranchIds.has(req.user!.branchId)) {
       return res.status(403).json({ error: "No tienes acceso a esta organización" });
     }
 
-    const branch = db.branches.create({
+    const branch = await db.branches.create({
       organizationId: org.id,
       name,
       address: address || "",
       businessType: businessType || BusinessType.GENERAL,
     });
 
-    db.warehouses.create({
+    await db.warehouses.create({
       name: `Almacén Principal ${name}`,
       branchId: branch.id,
       address: address || "Almacén por defecto",
@@ -615,9 +631,9 @@ async function startServer() {
 
     logAudit(req.user!.userId, "CREATE", "Branch", branch.id, `Created branch ${name}`);
 
-    const branchCount = db.branches.findMany().filter((b: any) => b.organizationId === org.id).length;
-    const basePrice = Number(db.systemSettings.getValue("subscription_base_price", "5000"));
-    const perBranchPrice = Number(db.systemSettings.getValue("subscription_per_branch_price", "1000"));
+    const branchCount = (await db.branches.findMany()).filter((b: any) => b.organizationId === org.id).length;
+    const basePrice = Number(await db.systemSettings.getValue("subscription_base_price", "5000"));
+    const perBranchPrice = Number(await db.systemSettings.getValue("subscription_per_branch_price", "1000"));
     const monthlyFee = basePrice + Math.max(0, branchCount - 1) * perBranchPrice;
 
     return res.status(201).json({ success: true, branch, branchCount, monthlyFee });
@@ -625,13 +641,13 @@ async function startServer() {
 
   // --- Subscription Routes ---
 
-  app.get("/api/subscription/payments", authenticate, (req, res) => {
+  app.get("/api/subscription/payments", authenticate, async (req, res) => {
     const { orgId } = req.query;
     if (!orgId) {
       return res.status(400).json({ error: "orgId es requerido" });
     }
     try {
-      const allPayments = db.subscriptionPayments.findMany();
+      const allPayments = await db.subscriptionPayments.findMany();
       const orgPayments = allPayments.filter(p => p.organizationId === orgId);
       orgPayments.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       return res.json(orgPayments);
@@ -643,31 +659,31 @@ async function startServer() {
 
   // --- Public (no auth) pricing ---
 
-  app.get("/api/public/pricing", (_req, res) => {
+  app.get("/api/public/pricing", async (_req, res) => {
     return res.json({
-      basePrice: Number(db.systemSettings.getValue("subscription_base_price", "5000")),
-      perBranchPrice: Number(db.systemSettings.getValue("subscription_per_branch_price", "1000")),
+      basePrice: Number(await db.systemSettings.getValue("subscription_base_price", "5000")),
+      perBranchPrice: Number(await db.systemSettings.getValue("subscription_per_branch_price", "1000")),
       currency: "CUP",
-      businessName: db.systemSettings.getValue("business_name", "Nimbo ERP"),
-      transfermovilPhone: db.systemSettings.getValue("transfermovil_phone", "+53 51234567"),
+      businessName: await db.systemSettings.getValue("business_name", "Nimbo ERP"),
+      transfermovilPhone: await db.systemSettings.getValue("transfermovil_phone", "+53 51234567"),
     });
   });
 
-  app.get("/api/subscription/pricing", authenticate, (req, res) => {    const { orgId } = req.query;
+  app.get("/api/subscription/pricing", authenticate, async (req, res) => {    const { orgId } = req.query;
     if (!orgId) {
       return res.status(400).json({ error: "orgId es requerido" });
     }
-    const org = db.organizations.findById(orgId as string);
+    const org = await db.organizations.findById(orgId as string);
     if (!org) {
       return res.status(404).json({ error: "Organización no encontrada" });
     }
-    const orgBranchIds = new Set(db.branches.findMany().filter((b: any) => b.organizationId === org.id).map((b: any) => b.id));
+    const orgBranchIds = new Set((await db.branches.findMany()).filter((b: any) => b.organizationId === org.id).map((b: any) => b.id));
     if (!orgBranchIds.has(req.user!.branchId)) {
       return res.status(403).json({ error: "No tienes acceso a esta organización" });
     }
     const branchCount = orgBranchIds.size;
-    const basePrice = Number(db.systemSettings.getValue("subscription_base_price", "5000"));
-    const perBranchPrice = Number(db.systemSettings.getValue("subscription_per_branch_price", "1000"));
+    const basePrice = Number(await db.systemSettings.getValue("subscription_base_price", "5000"));
+    const perBranchPrice = Number(await db.systemSettings.getValue("subscription_per_branch_price", "1000"));
     const totalPrice = basePrice + Math.max(0, branchCount - 1) * perBranchPrice;
     return res.json({
       basePrice,
@@ -675,9 +691,9 @@ async function startServer() {
       branchCount,
       totalPrice,
       currency: "CUP",
-      transfermovilPhone: db.systemSettings.getValue("transfermovil_phone", "+53 51234567"),
-      enzonaUser: db.systemSettings.getValue("enzona_user", "nimbo.erp"),
-      businessName: db.systemSettings.getValue("business_name", "Nimbo ERP"),
+      transfermovilPhone: await db.systemSettings.getValue("transfermovil_phone", "+53 51234567"),
+      enzonaUser: await db.systemSettings.getValue("enzona_user", "nimbo.erp"),
+      businessName: await db.systemSettings.getValue("business_name", "Nimbo ERP"),
     });
   });
 
@@ -688,12 +704,12 @@ async function startServer() {
     }
     const { orgId, platform, phone, transactionId, amount, userId } = parsed.data;
 
-    const org = db.organizations.findById(orgId);
+    const org = await db.organizations.findById(orgId);
     if (!org) {
       return res.status(404).json({ error: "Organización no encontrada" });
     }
 
-    const orgBranchIds = new Set(db.branches.findMany().filter((b: any) => b.organizationId === orgId).map((b: any) => b.id));
+    const orgBranchIds = new Set((await db.branches.findMany()).filter((b: any) => b.organizationId === orgId).map((b: any) => b.id));
     if (!orgBranchIds.has(req.user!.branchId)) {
       return res.status(403).json({ error: "No puedes pagar por una organización que no es tuya" });
     }
@@ -701,7 +717,7 @@ async function startServer() {
     const expires = new Date();
     expires.setDate(expires.getDate() + 30);
 
-    const updatedOrg = db.organizations.update(orgId, {
+    const updatedOrg = await db.organizations.update(orgId, {
       subscriptionStatus: "active",
       subscriptionExpiresAt: expires.toISOString(),
       lastPaymentDate: new Date().toISOString(),
@@ -715,7 +731,7 @@ async function startServer() {
 
     let paymentRecord: any = null;
     try {
-      paymentRecord = db.subscriptionPayments.create({
+      paymentRecord = await db.subscriptionPayments.create({
         organizationId: orgId,
         amount: Number(amount),
         currency: Currency.CUP,
@@ -729,7 +745,7 @@ async function startServer() {
     }
 
     try {
-      const trans = db.cashRegisterTransactions.create({
+      const trans = await db.cashRegisterTransactions.create({
         amount: Number(amount),
         type: "income",
         currency: Currency.CUP,
@@ -737,7 +753,7 @@ async function startServer() {
         category: "Suscripciones",
         userId: auditUserId,
       });
-      db.journalEntries.create({
+      await db.journalEntries.create({
         description: `Ingreso por Suscripción mensual ERP: ${org.name}`,
         reference: trans.id,
         status: "posted",
@@ -746,7 +762,7 @@ async function startServer() {
       logger.error({ err: e }, "Failed to log subscription to journal");
     }
 
-    const payer = db.users.findById(auditUserId);
+    const payer = await db.users.findById(auditUserId);
     const branchCount = orgBranchIds.size;
 
     return res.json({
@@ -756,7 +772,7 @@ async function startServer() {
       receipt: {
         paymentId: paymentRecord?.id || null,
         orgName: org.name,
-        businessName: db.systemSettings.getValue("business_name", "Nimbo ERP"),
+        businessName: await db.systemSettings.getValue("business_name", "Nimbo ERP"),
         amount: Number(amount),
         currency: "CUP",
         platform,
@@ -773,11 +789,11 @@ async function startServer() {
 
   // --- Products ---
 
-  app.get("/api/products", authSub, (req, res) => {
-    const productsList = db.products.findManyByOrg(req.orgId!);
-    const variantsList = db.variants.findManyByOrg(req.orgId!);
-    const categoriesList = db.categories.findManyByOrg(req.orgId!);
-    const taxesList = db.taxes.findManyByOrg(req.orgId!);
+  app.get("/api/products", authSub, async (req, res) => {
+    const productsList = await db.products.findManyByOrg(req.orgId!);
+    const variantsList = await db.variants.findManyByOrg(req.orgId!);
+    const categoriesList = await db.categories.findManyByOrg(req.orgId!);
+    const taxesList = await db.taxes.findManyByOrg(req.orgId!);
 
     const detailed = productsList.map((p) => {
       const vars = variantsList.filter((v) => v.productId === p.id);
@@ -799,7 +815,7 @@ async function startServer() {
       categoryId, taxId, priceCUP, priceUSD, costCUP, costUSD, imageUrl, variants, userId
     } = parsed.data;
 
-    const prod = db.products.create({
+    const prod = await db.products.create({
       name,
       description: description || "",
       sku: sku || "",
@@ -817,8 +833,8 @@ async function startServer() {
     });
 
     if (variants && Array.isArray(variants)) {
-      variants.forEach((v: any) => {
-        db.variants.create({
+      for (const v of variants) {
+        await db.variants.create({
           productId: prod.id,
           name: v.name,
           sku: v.sku || "",
@@ -830,15 +846,15 @@ async function startServer() {
           stock: Number(v.stock) || 0,
           organizationId: req.orgId!,
         });
-      });
+      }
     }
 
-    const warehouses = db.warehouses.findManyByOrg(req.orgId!);
-    warehouses.forEach((w) => {
+    const warehouses = await db.warehouses.findManyByOrg(req.orgId!);
+    for (const w of warehouses) {
       if (variants && Array.isArray(variants) && variants.length > 0) {
-        const freshVars = db.variants.findByProductId(prod.id);
-        freshVars.forEach((fv) => {
-          db.stocks.create({
+        const freshVars = await db.variants.findByProductId(prod.id);
+        for (const fv of freshVars) {
+          await db.stocks.create({
             productId: prod.id,
             variantId: fv.id,
             warehouseId: w.id,
@@ -847,9 +863,9 @@ async function startServer() {
             maxStock: 9999,
             organizationId: req.orgId!,
           });
-        });
+        }
       } else {
-        db.stocks.create({
+        await db.stocks.create({
           productId: prod.id,
           warehouseId: w.id,
           quantity: 0,
@@ -858,7 +874,7 @@ async function startServer() {
           organizationId: req.orgId!,
         });
       }
-    });
+    }
 
     const auditUserId = userId || req.user!.userId;
     logAudit(auditUserId, "CREATE", "Product", prod.id, `Created product ${name}`);
@@ -866,14 +882,14 @@ async function startServer() {
     return res.json(prod);
   });
 
-  app.put("/api/products/:id", authSub, (req, res) => {
+  app.put("/api/products/:id", authSub, async (req, res) => {
     const { id } = req.params;
     const {
       name, description, sku, barcode, unitOfMeasure, isService,
       categoryId, taxId, priceCUP, priceUSD, costCUP, costUSD, imageUrl, variants, userId
     } = req.body;
 
-    const updated = db.products.update(id, {
+    const updated = await db.products.update(id, {
       name, description, sku, barcode, unitOfMeasure,
       isService: !!isService, categoryId, taxId,
       priceCUP: Number(priceCUP) || 0,
@@ -888,9 +904,9 @@ async function startServer() {
     }
 
     if (variants && Array.isArray(variants)) {
-      db.variants.deleteByProductId(id);
-      variants.forEach((v: any) => {
-        db.variants.create({
+      await db.variants.deleteByProductId(id);
+      for (const v of variants) {
+        await db.variants.create({
           productId: id,
           name: v.name,
           sku: v.sku || "",
@@ -901,7 +917,7 @@ async function startServer() {
           costUSD: Number(v.costUSD) || 0,
           stock: Number(v.stock) || 0,
         });
-      });
+      }
     }
 
     const auditUserId = userId || req.user?.userId;
@@ -914,26 +930,26 @@ async function startServer() {
 
   // --- Categories ---
 
-  app.get("/api/categories", authSub, (req, res) => {
-    return res.json(db.categories.findManyByOrg(req.orgId!));
+  app.get("/api/categories", authSub, async (req, res) => {
+    return res.json(await db.categories.findManyByOrg(req.orgId!));
   });
 
-  app.post("/api/categories", authSub, (req, res) => {
+  app.post("/api/categories", authSub, async (req, res) => {
     const { name, parentId } = req.body;
     if (!name) return res.status(400).json({ error: "Nombre es requerido" });
     const slug = name.toLowerCase().replace(/\s+/g, "-");
-    const item = db.categories.create({ name, slug, parentId, organizationId: req.orgId! });
+    const item = await db.categories.create({ name, slug, parentId, organizationId: req.orgId! });
     logAudit(req.body.userId || "sistema", "CREATE", "Category", item.id, `Created category ${name}`);
     return res.json(item);
   });
 
   // --- Inventory ---
 
-  app.get("/api/inventario", authSub, (req, res) => {
-    const stocks = db.stocks.findManyByOrg(req.orgId!);
-    const products = db.products.findManyByOrg(req.orgId!);
-    const variants = db.variants.findManyByOrg(req.orgId!);
-    const warehouses = db.warehouses.findManyByOrg(req.orgId!);
+  app.get("/api/inventario", authSub, async (req, res) => {
+    const stocks = await db.stocks.findManyByOrg(req.orgId!);
+    const products = await db.products.findManyByOrg(req.orgId!);
+    const variants = await db.variants.findManyByOrg(req.orgId!);
+    const warehouses = await db.warehouses.findManyByOrg(req.orgId!);
 
     const detailedStocks = stocks.map((s) => {
       const p = products.find((x) => x.id === s.productId);
@@ -945,18 +961,18 @@ async function startServer() {
     return res.json({
       stocks: detailedStocks,
       warehouses,
-      movements: db.stockMovements.findMany().sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 50),
-      transfers: db.transfers.findMany().sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+      movements: (await db.stockMovements.findMany()).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 50),
+      transfers: (await db.transfers.findMany()).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     });
   });
 
-  app.post("/api/inventario/movimiento", authSub, (req, res) => {
+  app.post("/api/inventario/movimiento", authSub, async (req, res) => {
     const { stockId, type, quantity, reason, userId } = req.body;
     if (!stockId || !type || quantity === undefined) {
       return res.status(400).json({ error: "Faltan campos requeridos" });
     }
 
-    const stocksList = db.stocks.findMany();
+    const stocksList = await db.stocks.findMany();
     const sIdx = stocksList.findIndex((x) => x.id === stockId);
     if (sIdx === -1) {
       return res.status(404).json({ error: "Stock no encontrado" });
@@ -974,9 +990,9 @@ async function startServer() {
       finalQty = qtyChange;
     }
 
-    db.stocks.update(stockId, { quantity: Math.max(0, finalQty) });
+    await db.stocks.update(stockId, { quantity: Math.max(0, finalQty) });
 
-    const mov = db.stockMovements.create({
+    const mov = await db.stockMovements.create({
       stockId,
       type,
       quantity: qtyChange,
@@ -990,13 +1006,13 @@ async function startServer() {
     return res.json(mov);
   });
 
-  app.post("/api/inventario/transferencia", authSub, (req, res) => {
+  app.post("/api/inventario/transferencia", authSub, async (req, res) => {
     const { fromWarehouseId, toWarehouseId, items, userId } = req.body;
     if (!fromWarehouseId || !toWarehouseId || !items || !Array.isArray(items)) {
       return res.status(400).json({ error: "Parámetros inválidos" });
     }
 
-    const transfer = db.transfers.create({
+    const transfer = await db.transfers.create({
       fromWarehouseId,
       toWarehouseId,
       status: "completada",
@@ -1004,9 +1020,9 @@ async function startServer() {
       createdBy: userId || req.user!.userId,
     });
 
-    const stocks = db.stocks.findMany();
+    const stocks = await db.stocks.findMany();
 
-    items.forEach((item: any) => {
+    for (const item of items) {
       const srcStock = stocks.find(
         (s) => s.warehouseId === fromWarehouseId && s.productId === item.productId && s.variantId === item.variantId
       );
@@ -1016,8 +1032,8 @@ async function startServer() {
       const qty = Number(item.quantity);
 
       if (srcStock) {
-        db.stocks.update(srcStock.id, { quantity: Math.max(0, srcStock.quantity - qty) });
-        db.stockMovements.create({
+        await db.stocks.update(srcStock.id, { quantity: Math.max(0, srcStock.quantity - qty) });
+        await db.stockMovements.create({
           stockId: srcStock.id,
           type: "transferencia",
           quantity: qty,
@@ -1027,7 +1043,7 @@ async function startServer() {
       }
 
       if (!destStock) {
-        destStock = db.stocks.create({
+        destStock = await db.stocks.create({
           productId: item.productId,
           variantId: item.variantId,
           warehouseId: toWarehouseId,
@@ -1037,16 +1053,15 @@ async function startServer() {
         });
       }
 
-      db.stocks.update(destStock.id, { quantity: destStock.quantity + qty });
-      db.stockMovements.create({
+      await db.stocks.update(destStock.id, { quantity: destStock.quantity + qty });
+      await db.stockMovements.create({
         stockId: destStock.id,
         type: "transferencia",
         quantity: qty,
         reason: `Transferencia recibida de almacén ${fromWarehouseId}`,
         userId: userId || req.user!.userId,
       });
-    });
-
+    }
     const auditUserId = userId || req.user!.userId;
     logAudit(auditUserId, "TRANSFER", "Warehouse", fromWarehouseId, `Transferred items to warehouse ${toWarehouseId}`);
 
@@ -1055,17 +1070,17 @@ async function startServer() {
 
   // --- POS ---
 
-  app.get("/api/pos/sessions", authSub, (req, res) => {
-    const sessions = db.cashRegisterSessions.findManyByOrg(req.orgId!);
+  app.get("/api/pos/sessions", authSub, async (req, res) => {
+    const sessions = await db.cashRegisterSessions.findManyByOrg(req.orgId!);
     return res.json(sessions);
   });
 
-  app.post("/api/pos/sessions/start", authSub, (req, res) => {
+  app.post("/api/pos/sessions/start", authSub, async (req, res) => {
     const { branchId, initialCash, userId } = req.body;
-    if (!isBranchInOrg(branchId, req.orgId!)) {
+    if (!(await isBranchInOrg(branchId, req.orgId!))) {
       return res.status(403).json({ error: "La sucursal especificada no pertenece a tu organización" });
     }
-    const session = db.cashRegisterSessions.create({
+    const session = await db.cashRegisterSessions.create({
       branchId,
       userId: userId || req.user!.userId,
       initialCash: Number(initialCash) || 0,
@@ -1075,9 +1090,9 @@ async function startServer() {
     return res.json(session);
   });
 
-  app.post("/api/pos/sessions/close", authSub, (req, res) => {
+  app.post("/api/pos/sessions/close", authSub, async (req, res) => {
     const { sessionId, countedCash, expectedCash } = req.body;
-    const session = db.cashRegisterSessions.update(sessionId, {
+    const session = await db.cashRegisterSessions.update(sessionId, {
       status: "closed",
       endDate: new Date().toISOString(),
       countedCash: Number(countedCash) || 0,
@@ -1088,14 +1103,14 @@ async function startServer() {
 
   // --- Sales ---
 
-  app.get("/api/sales", authSub, (req, res) => {
-    const sales = db.sales.findManyByOrg(req.orgId!);
-    const customers = db.customers.findManyByOrg(req.orgId!);
-    const detailed = sales.map((s) => ({
+  app.get("/api/sales", authSub, async (req, res) => {
+    const sales = await db.sales.findManyByOrg(req.orgId!);
+    const customers = await db.customers.findManyByOrg(req.orgId!);
+    const detailed = await Promise.all(sales.map(async (s) => ({
       ...s,
       customer: customers.find((c) => c.id === s.customerId) || null,
-      items: db.saleItems.findMany().filter((i) => i.saleId === s.id),
-    }));
+      items: (await db.saleItems.findMany()).filter((i) => i.saleId === s.id),
+    })));
     return res.json(detailed);
   });
 
@@ -1110,11 +1125,11 @@ async function startServer() {
       paymentMethod, payments, userId, isCredit, loyaltyPointsRedeemed,
     } = parsed.data;
 
-    if (!isBranchInOrg(branchId, req.orgId!)) {
+    if (!(await isBranchInOrg(branchId, req.orgId!))) {
       return res.status(403).json({ error: "La sucursal especificada no pertenece a tu organización" });
     }
 
-    const sale = db.sales.create({
+    const sale = await db.sales.create({
       branchId,
       customerId: customerId || undefined,
       date: new Date().toISOString(),
@@ -1131,11 +1146,11 @@ async function startServer() {
       organizationId: req.orgId!,
     });
 
-    const stocks = db.stocks.findManyByOrg(req.orgId!);
-    const branchWarehouse = db.warehouses.findManyByOrg(req.orgId!).find((w) => w.branchId === branchId);
+    const stocks = await db.stocks.findManyByOrg(req.orgId!);
+    const branchWarehouse = (await db.warehouses.findManyByOrg(req.orgId!)).find((w) => w.branchId === branchId);
 
-    items.forEach((item: any) => {
-      db.saleItems.create({
+    for (const item of items) {
+      await db.saleItems.create({
         saleId: sale.id,
         productId: item.productId,
         variantId: item.variantId || undefined,
@@ -1151,8 +1166,8 @@ async function startServer() {
           (s) => s.warehouseId === branchWarehouse.id && s.productId === item.productId && (!item.variantId || s.variantId === item.variantId)
         );
         if (matchingStock) {
-          db.stocks.update(matchingStock.id, { quantity: Math.max(0, matchingStock.quantity - Number(item.quantity)) });
-          db.stockMovements.create({
+          await db.stocks.update(matchingStock.id, { quantity: Math.max(0, matchingStock.quantity - Number(item.quantity)) });
+          await db.stockMovements.create({
             stockId: matchingStock.id,
             type: "salida",
             quantity: Number(item.quantity),
@@ -1162,20 +1177,20 @@ async function startServer() {
           });
         }
       }
-    });
+    }
 
     if (payments && Array.isArray(payments)) {
-      payments.forEach((p: any) => {
-        db.payments.create({
+      for (const p of payments) {
+        await db.payments.create({
           saleId: sale.id,
           method: p.method || paymentMethod,
           currency: p.currency || Currency.CUP,
           amount: Number(p.amount),
           reference: p.reference || undefined,
         });
-      });
+      }
     } else {
-      db.payments.create({
+      await db.payments.create({
         saleId: sale.id,
         method: paymentMethod || "efectivo",
         currency: (grandTotalUSD || 0) > 0 ? Currency.USD : Currency.CUP,
@@ -1185,7 +1200,7 @@ async function startServer() {
     }
 
     if (customerId) {
-      const customer = db.customers.findById(customerId);
+      const customer = await db.customers.findById(customerId);
       if (customer) {
         let newBalance = customer.currentBalance;
         let newPoints = customer.loyaltyPoints;
@@ -1197,18 +1212,18 @@ async function startServer() {
         if (loyaltyPointsRedeemed) {
           newPoints = Math.max(0, newPoints - Number(loyaltyPointsRedeemed));
         }
-        db.customers.update(customerId, { currentBalance: newBalance, loyaltyPoints: newPoints });
+        await db.customers.update(customerId, { currentBalance: newBalance, loyaltyPoints: newPoints });
       }
     }
 
-    const entry = db.journalEntries.create({
+    const entry = await db.journalEntries.create({
       description: `Ingreso por Venta POS ${sale.id}`,
       reference: sale.id,
       status: "posted",
       organizationId: req.orgId!,
     });
-    db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "1010", debit: Number(grandTotalCUP) || 0, credit: 0 });
-    db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "4010", debit: 0, credit: Number(grandTotalCUP) || 0 });
+    await db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "1010", debit: Number(grandTotalCUP) || 0, credit: 0 });
+    await db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "4010", debit: 0, credit: Number(grandTotalCUP) || 0 });
 
     const auditUserId = userId || req.user!.userId;
     logAudit(auditUserId, "CREATE_SALE", "Sale", sale.id, `Completed sale of ${grandTotalCUP} CUP`);
@@ -1216,26 +1231,26 @@ async function startServer() {
     return res.json(sale);
   });
 
-  app.post("/api/sales/:id/refund", authSub, (req, res) => {
+  app.post("/api/sales/:id/refund", authSub, async (req, res) => {
     const { id } = req.params;
     const { userId } = req.body;
-    const sale = db.sales.findById(id);
+    const sale = await db.sales.findById(id);
     if (!sale) return res.status(404).json({ error: "Venta no encontrada" });
 
-    db.sales.update(id, { status: "refunded" });
+    await db.sales.update(id, { status: "refunded" });
 
-    const items = db.saleItems.findMany().filter((i) => i.saleId === id);
-    const branchWarehouse = db.warehouses.findManyByOrg(req.orgId!).find((w) => w.branchId === sale.branchId);
-    const stocks = db.stocks.findManyByOrg(req.orgId!);
+    const items = (await db.saleItems.findMany()).filter((i) => i.saleId === id);
+    const branchWarehouse = (await db.warehouses.findManyByOrg(req.orgId!)).find((w) => w.branchId === sale.branchId);
+    const stocks = await db.stocks.findManyByOrg(req.orgId!);
 
     if (branchWarehouse) {
-      items.forEach((item) => {
+      for (const item of items) {
         const matchingStock = stocks.find(
           (s) => s.warehouseId === branchWarehouse.id && s.productId === item.productId && (!item.variantId || s.variantId === item.variantId)
         );
         if (matchingStock) {
-          db.stocks.update(matchingStock.id, { quantity: matchingStock.quantity + item.quantity });
-          db.stockMovements.create({
+          await db.stocks.update(matchingStock.id, { quantity: matchingStock.quantity + item.quantity });
+          await db.stockMovements.create({
             stockId: matchingStock.id,
             type: "entrada",
             quantity: item.quantity,
@@ -1244,17 +1259,17 @@ async function startServer() {
             organizationId: req.orgId!,
           });
         }
-      });
+      }
     }
 
-    const entry = db.journalEntries.create({
+    const entry = await db.journalEntries.create({
       description: `Reverso de Venta ${id}`,
       reference: id,
       status: "posted",
       organizationId: req.orgId!,
     });
-    db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "4010", debit: Number(sale.grandTotalCUP), credit: 0 });
-    db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "1010", debit: 0, credit: Number(sale.grandTotalCUP) });
+    await db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "4010", debit: Number(sale.grandTotalCUP), credit: 0 });
+    await db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "1010", debit: 0, credit: Number(sale.grandTotalCUP) });
 
     const auditUserId = userId || req.user?.userId;
     if (auditUserId) {
@@ -1266,23 +1281,23 @@ async function startServer() {
 
   // --- Orders ---
 
-  app.get("/api/orders", authSub, (req, res) => {
-    const orders = db.orders.findManyByOrg(req.orgId!);
-    const customers = db.customers.findManyByOrg(req.orgId!);
-    const detailed = orders.map((o) => ({
+  app.get("/api/orders", authSub, async (req, res) => {
+    const orders = await db.orders.findManyByOrg(req.orgId!);
+    const customers = await db.customers.findManyByOrg(req.orgId!);
+    const detailed = await Promise.all(orders.map(async (o) => ({
       ...o,
       customer: customers.find((c) => c.id === o.customerId) || null,
-      items: db.orderItems.findMany().filter((i) => i.orderId === o.id),
-    }));
+      items: (await db.orderItems.findMany()).filter((i) => i.orderId === o.id),
+    })));
     return res.json(detailed);
   });
 
-  app.post("/api/orders", authSub, (req, res) => {
+  app.post("/api/orders", authSub, async (req, res) => {
     const { branchId, customerId, items, deliveryDate, totalCUP, totalUSD, notes, deliveryAddress, assignedDriverId, advancePayment } = req.body;
-    if (!isBranchInOrg(branchId, req.orgId!)) {
+    if (!(await isBranchInOrg(branchId, req.orgId!))) {
       return res.status(403).json({ error: "La sucursal especificada no pertenece a tu organización" });
     }
-    const order = db.orders.create({
+    const order = await db.orders.create({
       branchId, customerId, deliveryDate, status: "pending",
       totalCUP: Number(totalCUP) || 0, totalUSD: Number(totalUSD) || 0,
       notes: notes || "", deliveryAddress: deliveryAddress || "",
@@ -1290,34 +1305,34 @@ async function startServer() {
       organizationId: req.orgId!,
     });
     if (items && Array.isArray(items)) {
-      items.forEach((item: any) => {
-        db.orderItems.create({
+      for (const item of items) {
+        await db.orderItems.create({
           orderId: order.id, productId: item.productId, variantId: item.variantId || undefined,
           quantity: Number(item.quantity), unitPriceCUP: Number(item.priceCUP) || 0, unitPriceUSD: Number(item.priceUSD) || 0,
         });
-      });
+      }
     }
     const auditUserId = req.body.userId || req.user!.userId;
     logAudit(auditUserId, "CREATE_ORDER", "Order", order.id, `Created order for ${totalCUP} CUP`);
     return res.json(order);
   });
 
-  app.put("/api/orders/:id/status", authSub, (req, res) => {
+  app.put("/api/orders/:id/status", authSub, async (req, res) => {
     const { id } = req.params;
     const { status, assignedDriverId } = req.body;
-    const order = db.orders.update(id, { status, assignedDriverId });
+    const order = await db.orders.update(id, { status, assignedDriverId });
     logAudit(req.body.userId || req.user!.userId, "UPDATE_ORDER_STATUS", "Order", id, `Status changed to ${status}`);
     return res.json(order);
   });
 
   // --- Purchases ---
 
-  app.get("/api/compras", authSub, (req, res) => {
-    const suppliers = db.suppliers.findManyByOrg(req.orgId!);
-    const purchaseOrders = db.purchaseOrders.findManyByOrg(req.orgId!);
-    const items = db.purchaseOrderItems.findMany();
-    const invoices = db.supplierInvoices.findManyByOrg(req.orgId!);
-    const products = db.products.findManyByOrg(req.orgId!);
+  app.get("/api/compras", authSub, async (req, res) => {
+    const suppliers = await db.suppliers.findManyByOrg(req.orgId!);
+    const purchaseOrders = await db.purchaseOrders.findManyByOrg(req.orgId!);
+    const items = await db.purchaseOrderItems.findMany();
+    const invoices = await db.supplierInvoices.findManyByOrg(req.orgId!);
+    const products = await db.products.findManyByOrg(req.orgId!);
 
     const detailedOrders = purchaseOrders.map((po) => {
       const sup = suppliers.find((s) => s.id === po.supplierId);
@@ -1330,61 +1345,61 @@ async function startServer() {
     return res.json({ suppliers, purchaseOrders: detailedOrders, invoices: detailedInvoices });
   });
 
-  app.post("/api/compras/suppliers", authSub, (req, res) => {
+  app.post("/api/compras/suppliers", authSub, async (req, res) => {
     const { name, contact, taxId, email, phone, address, paymentTerms } = req.body;
-    const item = db.suppliers.create({ name, contact, taxId, email, phone, address, paymentTerms, organizationId: req.orgId! });
+    const item = await db.suppliers.create({ name, contact, taxId, email, phone, address, paymentTerms, organizationId: req.orgId! });
     logAudit(req.body.userId || req.user!.userId, "CREATE", "Supplier", item.id, `Created supplier ${name}`);
     return res.json(item);
   });
 
-  app.post("/api/compras/orders", authSub, (req, res) => {
+  app.post("/api/compras/orders", authSub, async (req, res) => {
     const { supplierId, warehouseId, notes, createdBy, items } = req.body;
-    const po = db.purchaseOrders.create({
+    const po = await db.purchaseOrders.create({
       supplierId, warehouseId, status: "draft", notes,
       orderDate: new Date().toISOString().substring(0, 10),
       createdBy: createdBy || "admin",
       organizationId: req.orgId!,
     });
     if (items && Array.isArray(items)) {
-      items.forEach((item: any) => {
-        db.purchaseOrderItems.create({
+      for (const item of items) {
+        await db.purchaseOrderItems.create({
           purchaseOrderId: po.id, productId: item.productId, variantId: item.variantId || undefined,
           quantity: Number(item.quantity), unitCostCUP: Number(item.costCUP) || 0, unitCostUSD: Number(item.costUSD) || 0, receivedQty: 0,
         });
-      });
+      }
     }
     logAudit(req.body.createdBy || "sistema", "CREATE_PURCHASE_ORDER", "PurchaseOrder", po.id);
     return res.json(po);
   });
 
-  app.post("/api/compras/orders/:id/receive", authSub, (req, res) => {
+  app.post("/api/compras/orders/:id/receive", authSub, async (req, res) => {
     const { id } = req.params;
     const { userId } = req.body;
-    const po = db.purchaseOrders.update(id, { status: "received" });
+    const po = await db.purchaseOrders.update(id, { status: "received" });
     if (!po) return res.status(404).json({ error: "Orden no encontrada" });
 
-    const poItems = db.purchaseOrderItems.findMany().filter((i) => i.purchaseOrderId === id);
-    const stocks = db.stocks.findManyByOrg(req.orgId!);
+    const poItems = (await db.purchaseOrderItems.findMany()).filter((i) => i.purchaseOrderId === id);
+    const stocks = await db.stocks.findManyByOrg(req.orgId!);
     let totalCUP = 0;
     let totalUSD = 0;
 
-    poItems.forEach((poi) => {
-      db.purchaseOrderItems.update(poi.id, { receivedQty: poi.quantity });
+    for (const poi of poItems) {
+      await db.purchaseOrderItems.update(poi.id, { receivedQty: poi.quantity });
       let matchingStock = stocks.find((s) => s.warehouseId === po.warehouseId && s.productId === poi.productId && (!poi.variantId || s.variantId === poi.variantId));
       if (!matchingStock) {
-        matchingStock = db.stocks.create({ productId: poi.productId, variantId: poi.variantId, warehouseId: po.warehouseId, quantity: 0, minStock: 5, maxStock: 9999, organizationId: req.orgId! });
+        matchingStock = await db.stocks.create({ productId: poi.productId, variantId: poi.variantId, warehouseId: po.warehouseId, quantity: 0, minStock: 5, maxStock: 9999, organizationId: req.orgId! });
       }
-      db.stocks.update(matchingStock.id, { quantity: matchingStock.quantity + poi.quantity });
-      db.stockMovements.create({ stockId: matchingStock.id, type: "entrada", quantity: poi.quantity, reason: `Recepción Orden Compra ${id}`, userId: userId || req.user!.userId, organizationId: req.orgId! });
+      await db.stocks.update(matchingStock.id, { quantity: matchingStock.quantity + poi.quantity });
+      await db.stockMovements.create({ stockId: matchingStock.id, type: "entrada", quantity: poi.quantity, reason: `Recepción Orden Compra ${id}`, userId: userId || req.user!.userId, organizationId: req.orgId! });
       totalCUP += poi.quantity * poi.unitCostCUP;
       totalUSD += poi.quantity * poi.unitCostUSD;
-    });
+    }
 
-    db.supplierInvoices.create({ supplierId: po.supplierId, purchaseOrderId: po.id, totalCUP, totalUSD, paidAmountCUP: 0, paidAmountUSD: 0, status: "pendiente", organizationId: req.orgId! });
+    await db.supplierInvoices.create({ supplierId: po.supplierId, purchaseOrderId: po.id, totalCUP, totalUSD, paidAmountCUP: 0, paidAmountUSD: 0, status: "pendiente", organizationId: req.orgId! });
 
-    const entry = db.journalEntries.create({ description: `Recepción Orden de Compra ${id}`, reference: id, status: "posted", organizationId: req.orgId! });
-    db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "1040", debit: totalCUP, credit: 0 });
-    db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "2010", debit: 0, credit: totalCUP });
+    const entry = await db.journalEntries.create({ description: `Recepción Orden de Compra ${id}`, reference: id, status: "posted", organizationId: req.orgId! });
+    await db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "1040", debit: totalCUP, credit: 0 });
+    await db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "2010", debit: 0, credit: totalCUP });
 
     const auditUserId = userId || req.user!.userId;
     logAudit(auditUserId, "RECEIVE_PURCHASE", "PurchaseOrder", id, `Received purchase order ${id} with total ${totalCUP} CUP`);
@@ -1392,34 +1407,34 @@ async function startServer() {
     return res.json(po);
   });
 
-  app.post("/api/compras/invoices/:id/pay", authSub, (req, res) => {
+  app.post("/api/compras/invoices/:id/pay", authSub, async (req, res) => {
     const { id } = req.params;
     const { amountCUP, amountUSD, userId } = req.body;
-    const inv = db.supplierInvoices.findMany().find((x) => x.id === id);
+    const inv = (await db.supplierInvoices.findMany()).find((x) => x.id === id);
     if (!inv) return res.status(404).json({ error: "Factura no encontrada" });
 
     const updatedPaidCUP = inv.paidAmountCUP + (Number(amountCUP) || 0);
     const updatedPaidUSD = inv.paidAmountUSD + (Number(amountUSD) || 0);
     const status = (updatedPaidCUP >= inv.totalCUP) ? "pagada" : "pendiente";
 
-    const updated = db.supplierInvoices.update(id, { paidAmountCUP: updatedPaidCUP, paidAmountUSD: updatedPaidUSD, status });
+    const updated = await db.supplierInvoices.update(id, { paidAmountCUP: updatedPaidCUP, paidAmountUSD: updatedPaidUSD, status });
 
-    const entry = db.journalEntries.create({ description: `Pago Factura Proveedor ${id}`, reference: id, status: "posted", organizationId: req.orgId! });
-    db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "2010", debit: Number(amountCUP) || 0, credit: 0 });
-    db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "1010", debit: 0, credit: Number(amountCUP) || 0 });
+    const entry = await db.journalEntries.create({ description: `Pago Factura Proveedor ${id}`, reference: id, status: "posted", organizationId: req.orgId! });
+    await db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "2010", debit: Number(amountCUP) || 0, credit: 0 });
+    await db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "1010", debit: 0, credit: Number(amountCUP) || 0 });
 
     return res.json(updated);
   });
 
   // --- Customers ---
 
-  app.get("/api/clientes", authSub, (req, res) => {
-    return res.json(db.customers.findManyByOrg(req.orgId!));
+  app.get("/api/clientes", authSub, async (req, res) => {
+    return res.json(await db.customers.findManyByOrg(req.orgId!));
   });
 
-  app.post("/api/clientes", authSub, (req, res) => {
+  app.post("/api/clientes", authSub, async (req, res) => {
     const { name, email, phone, address, taxId, creditLimit } = req.body;
-    const client = db.customers.create({
+    const client = await db.customers.create({
       name, email: email || "", phone: phone || "", address: address || "",
       taxId: taxId || "", creditLimit: Number(creditLimit) || 0, currentBalance: 0, loyaltyPoints: 0,
       organizationId: req.orgId!,
@@ -1428,10 +1443,10 @@ async function startServer() {
     return res.json(client);
   });
 
-  app.put("/api/clientes/:id", authSub, (req, res) => {
+  app.put("/api/clientes/:id", authSub, async (req, res) => {
     const { id } = req.params;
     const { name, email, phone, address, taxId, creditLimit, loyaltyPoints } = req.body;
-    const updated = db.customers.update(id, {
+    const updated = await db.customers.update(id, {
       name, email, phone, address, taxId,
       creditLimit: creditLimit !== undefined ? Number(creditLimit) : undefined,
       loyaltyPoints: loyaltyPoints !== undefined ? Number(loyaltyPoints) : undefined,
@@ -1440,7 +1455,7 @@ async function startServer() {
     return res.json(updated);
   });
 
-  app.post("/api/clientes/campana", authSub, (req, res) => {
+  app.post("/api/clientes/campana", authSub, async (req, res) => {
     const { name, message, customerIds } = req.body;
     logAudit(req.user!.userId, "SEND_CAMPAIGN", "Customer", "multiple", `Sent campaign '${name}' to ${customerIds ? customerIds.length : 0} customers. Message: ${message}`);
     return res.json({ success: true, logged: true });
@@ -1448,12 +1463,12 @@ async function startServer() {
 
   // --- Production ---
 
-  app.get("/api/produccion", authSub, (req, res) => {
-    const recipes = db.recipes.findManyByOrg(req.orgId!);
-    const ingredients = db.recipeIngredients.findMany();
-    const productionOrders = db.productionOrders.findManyByOrg(req.orgId!);
-    const products = db.products.findManyByOrg(req.orgId!);
-    const warehouses = db.warehouses.findManyByOrg(req.orgId!);
+  app.get("/api/produccion", authSub, async (req, res) => {
+    const recipes = await db.recipes.findManyByOrg(req.orgId!);
+    const ingredients = await db.recipeIngredients.findMany();
+    const productionOrders = await db.productionOrders.findManyByOrg(req.orgId!);
+    const products = await db.products.findManyByOrg(req.orgId!);
+    const warehouses = await db.warehouses.findManyByOrg(req.orgId!);
 
     const detailedRecipes = recipes.map((r) => {
       const rIngs = ingredients.filter((i) => i.recipeId === r.id).map((i) => ({ ...i, ingredientProduct: products.find((p) => p.id === i.ingredientProductId) }));
@@ -1470,84 +1485,84 @@ async function startServer() {
     return res.json({ recipes: detailedRecipes, productionOrders: detailedOrders });
   });
 
-  app.post("/api/produccion/recipes", authSub, (req, res) => {
+  app.post("/api/produccion/recipes", authSub, async (req, res) => {
     const { name, productId, yieldQuantity, yieldUnit, ingredients } = req.body;
-    const rec = db.recipes.create({ name, productId, yieldQuantity: Number(yieldQuantity) || 1, yieldUnit: yieldUnit || "pieza", organizationId: req.orgId! });
+    const rec = await db.recipes.create({ name, productId, yieldQuantity: Number(yieldQuantity) || 1, yieldUnit: yieldUnit || "pieza", organizationId: req.orgId! });
     if (ingredients && Array.isArray(ingredients)) {
-      ingredients.forEach((ing: any) => {
-        db.recipeIngredients.create({ recipeId: rec.id, ingredientProductId: ing.ingredientProductId, quantity: Number(ing.quantity), unit: ing.unit || "kg", wastePercent: Number(ing.wastePercent) || 0 });
-      });
+      for (const ing of ingredients) {
+        await db.recipeIngredients.create({ recipeId: rec.id, ingredientProductId: ing.ingredientProductId, quantity: Number(ing.quantity), unit: ing.unit || "kg", wastePercent: Number(ing.wastePercent) || 0 });
+      }
     }
     logAudit(req.body.userId || "sistema", "CREATE", "Recipe", rec.id, `Created recipe ${name}`);
     return res.json(rec);
   });
 
-  app.delete("/api/produccion/recipes/:id", authSub, authorize(Role.ADMIN, Role.SUPER_ADMIN, Role.PRODUCCION), (req, res) => {
+  app.delete("/api/produccion/recipes/:id", authSub, authorize(Role.ADMIN, Role.SUPER_ADMIN, Role.PRODUCCION), async (req, res) => {
     const { id } = req.params;
-    db.recipeIngredients.deleteByRecipeId(id);
-    db.recipes.delete(id);
+    await db.recipeIngredients.deleteByRecipeId(id);
+    await db.recipes.delete(id);
     logAudit(req.body.userId || req.user!.userId, "DELETE", "Recipe", id);
     return res.json({ success: true });
   });
 
-  app.post("/api/produccion/orders", authSub, (req, res) => {
+  app.post("/api/produccion/orders", authSub, async (req, res) => {
     const { productId, recipeId, plannedQuantity, warehouseId, notes } = req.body;
-    const order = db.productionOrders.create({ productId, recipeId: recipeId || undefined, plannedQuantity: Number(plannedQuantity), producedQuantity: 0, status: "planned", warehouseId, notes: notes || "", organizationId: req.orgId! });
+    const order = await db.productionOrders.create({ productId, recipeId: recipeId || undefined, plannedQuantity: Number(plannedQuantity), producedQuantity: 0, status: "planned", warehouseId, notes: notes || "", organizationId: req.orgId! });
     logAudit(req.body.userId || "sistema", "CREATE", "ProductionOrder", order.id, `Planned ${plannedQuantity} units`);
     return res.json(order);
   });
 
-  app.post("/api/produccion/orders/:id/start", authSub, (req, res) => {
+  app.post("/api/produccion/orders/:id/start", authSub, async (req, res) => {
     const { id } = req.params;
     const { userId } = req.body;
-    const order = db.productionOrders.findManyByOrg(req.orgId!).find((o) => o.id === id);
+    const order = (await db.productionOrders.findManyByOrg(req.orgId!)).find((o) => o.id === id);
     if (!order) return res.status(404).json({ error: "Orden de producción no encontrada" });
 
-    db.productionOrders.update(id, { status: "in_progress", startDate: new Date().toISOString() });
+    await db.productionOrders.update(id, { status: "in_progress", startDate: new Date().toISOString() });
 
     if (order.recipeId) {
-      const ingredients = db.recipeIngredients.findMany().filter((i) => i.recipeId === order.recipeId);
-      const stocks = db.stocks.findManyByOrg(req.orgId!);
-      ingredients.forEach((ing) => {
+      const ingredients = (await db.recipeIngredients.findMany()).filter((i) => i.recipeId === order.recipeId);
+      const stocks = await db.stocks.findManyByOrg(req.orgId!);
+      for (const ing of ingredients) {
         const requiredQty = (ing.quantity * order.plannedQuantity) * (1 + ing.wastePercent / 100);
         const matchingStock = stocks.find((s) => s.warehouseId === order.warehouseId && s.productId === ing.ingredientProductId);
         if (matchingStock) {
-          db.stocks.update(matchingStock.id, { quantity: Math.max(0, matchingStock.quantity - requiredQty) });
-          db.stockMovements.create({ stockId: matchingStock.id, type: "salida", quantity: requiredQty, reason: `Consumo ingredientes Orden Producción ${id}`, userId: userId || req.user!.userId, organizationId: req.orgId! });
+          await db.stocks.update(matchingStock.id, { quantity: Math.max(0, matchingStock.quantity - requiredQty) });
+          await db.stockMovements.create({ stockId: matchingStock.id, type: "salida", quantity: requiredQty, reason: `Consumo ingredientes Orden Producción ${id}`, userId: userId || req.user!.userId, organizationId: req.orgId! });
         }
-      });
+      }
     }
 
     return res.json({ success: true });
   });
 
-  app.post("/api/produccion/orders/:id/complete", authSub, (req, res) => {
+  app.post("/api/produccion/orders/:id/complete", authSub, async (req, res) => {
     const { id } = req.params;
     const { producedQuantity, userId } = req.body;
-    const order = db.productionOrders.findManyByOrg(req.orgId!).find((o) => o.id === id);
+    const order = (await db.productionOrders.findManyByOrg(req.orgId!)).find((o) => o.id === id);
     if (!order) return res.status(404).json({ error: "Orden de producción no encontrada" });
 
     const qty = Number(producedQuantity) || order.plannedQuantity;
-    db.productionOrders.update(id, { status: "completed", endDate: new Date().toISOString(), producedQuantity: qty });
+    await db.productionOrders.update(id, { status: "completed", endDate: new Date().toISOString(), producedQuantity: qty });
 
-    const stocks = db.stocks.findManyByOrg(req.orgId!);
+    const stocks = await db.stocks.findManyByOrg(req.orgId!);
     let finishedStock = stocks.find((s) => s.warehouseId === order.warehouseId && s.productId === order.productId);
     if (!finishedStock) {
-      finishedStock = db.stocks.create({ productId: order.productId, warehouseId: order.warehouseId, quantity: 0, minStock: 5, maxStock: 9999, organizationId: req.orgId! });
+      finishedStock = await db.stocks.create({ productId: order.productId, warehouseId: order.warehouseId, quantity: 0, minStock: 5, maxStock: 9999, organizationId: req.orgId! });
     }
-    db.stocks.update(finishedStock.id, { quantity: finishedStock.quantity + qty });
-    db.stockMovements.create({ stockId: finishedStock.id, type: "entrada", quantity: qty, reason: `Producción de orden terminada ${id}`, userId: userId || req.user!.userId, organizationId: req.orgId! });
+    await db.stocks.update(finishedStock.id, { quantity: finishedStock.quantity + qty });
+    await db.stockMovements.create({ stockId: finishedStock.id, type: "entrada", quantity: qty, reason: `Producción de orden terminada ${id}`, userId: userId || req.user!.userId, organizationId: req.orgId! });
 
     return res.json({ success: true });
   });
 
   // --- Finances ---
 
-  app.get("/api/finanzas", authSub, (req, res) => {
-    const accounts = db.accounts.findManyByOrg(req.orgId!);
-    const journalEntries = db.journalEntries.findManyByOrg(req.orgId!);
-    const lines = db.journalEntryLines.findMany();
-    const trans = db.cashRegisterTransactions.findManyByOrg(req.orgId!);
+  app.get("/api/finanzas", authSub, async (req, res) => {
+    const accounts = await db.accounts.findManyByOrg(req.orgId!);
+    const journalEntries = await db.journalEntries.findManyByOrg(req.orgId!);
+    const lines = await db.journalEntryLines.findMany();
+    const trans = await db.cashRegisterTransactions.findManyByOrg(req.orgId!);
 
     const detailedAccounts = accounts.map((acc) => {
       const accLines = lines.filter((l) => l.accountId === acc.id);
@@ -1572,25 +1587,25 @@ async function startServer() {
     });
   });
 
-  app.post("/api/finanzas/transactions", authSub, authorize(Role.CONTABLE, Role.ADMIN, Role.SUPER_ADMIN), (req, res) => {
+  app.post("/api/finanzas/transactions", authSub, authorize(Role.CONTABLE, Role.ADMIN, Role.SUPER_ADMIN), async (req, res) => {
     const { type, amount, currency, description, category, userId } = req.body;
     if (!type || !amount) return res.status(400).json({ error: "Campos requeridos vacíos" });
 
-    const trans = db.cashRegisterTransactions.create({
+    const trans = await db.cashRegisterTransactions.create({
       type, amount: Number(amount), currency: currency || Currency.CUP,
       description: description || "", category: category || "General",
       userId: userId || req.user!.userId,
     });
 
-    const entry = db.journalEntries.create({ description: `Transacción Caja No Operativa: ${description}`, reference: trans.id, status: "posted" });
+    const entry = await db.journalEntries.create({ description: `Transacción Caja No Operativa: ${description}`, reference: trans.id, status: "posted" });
     const isIncome = type === "income";
     const amt = Number(amount);
     if (isIncome) {
-      db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "1010", debit: amt, credit: 0 });
-      db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "4010", debit: 0, credit: amt });
+      await db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "1010", debit: amt, credit: 0 });
+      await db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "4010", debit: 0, credit: amt });
     } else {
-      db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "5030", debit: amt, credit: 0 });
-db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "1010", debit: 0, credit: amt });
+      await db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "5030", debit: amt, credit: 0 });
+await db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "1010", debit: 0, credit: amt });
     }
     const auditUserId = userId || req.user!.userId;
     logAudit(auditUserId, "CREATE_TRANSACTION", "CashTransaction", trans.id, `${type} ${amount} ${currency} - ${description}`);
@@ -1599,11 +1614,11 @@ db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "1010", debit
 
   // --- HR ---
 
-  app.get("/api/rrhh", authSub, (req, res) => {
-    const employees = db.employees.findManyByOrg(req.orgId!);
-    const attendances = db.attendances.findMany();
-    const periods = db.payrollPeriods.findMany();
-    const details = db.payrollDetails.findMany();
+  app.get("/api/rrhh", authSub, async (req, res) => {
+    const employees = await db.employees.findManyByOrg(req.orgId!);
+    const attendances = await db.attendances.findMany();
+    const periods = await db.payrollPeriods.findMany();
+    const details = await db.payrollDetails.findMany();
 
     const detailedEmployees = employees.map((emp) => ({ ...emp, attendances: attendances.filter((a) => a.employeeId === emp.id) }));
     const detailedPeriods = periods.map((p) => ({
@@ -1614,9 +1629,9 @@ db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "1010", debit
     return res.json({ employees: detailedEmployees, periods: detailedPeriods });
   });
 
-app.post("/api/rrhh/employees", authSub, (req, res) => {
+app.post("/api/rrhh/employees", authSub, async (req, res) => {
     const { firstName, lastName, hireDate, baseSalary, paymentType, bankAccount, taxId, socialSecurityNumber } = req.body;
-    const emp = db.employees.create({
+    const emp = await db.employees.create({
       firstName, lastName, hireDate: hireDate || new Date().toISOString().substring(0, 10),
       baseSalary: Number(baseSalary) || 0, paymentType: paymentType || "salary",
       bankAccount: bankAccount || "", taxId: taxId || "", socialSecurityNumber: socialSecurityNumber || "",
@@ -1627,7 +1642,7 @@ app.post("/api/rrhh/employees", authSub, (req, res) => {
     return res.json(emp);
   });
 
-  app.post("/api/rrhh/attendance", authSub, (req, res) => {
+  app.post("/api/rrhh/attendance", authSub, async (req, res) => {
     const { employeeId, date, checkIn, checkOut } = req.body;
     const inTime = checkIn ? new Date(`${date}T${checkIn}:00Z`) : null;
     const outTime = checkOut ? new Date(`${date}T${checkOut}:00Z`) : null;
@@ -1635,7 +1650,7 @@ app.post("/api/rrhh/employees", authSub, (req, res) => {
     if (inTime && outTime) {
       hoursWorked = (outTime.getTime() - inTime.getTime()) / (1000 * 60 * 60);
     }
-    const att = db.attendances.create({
+    const att = await db.attendances.create({
       employeeId, date,
       checkIn: checkIn ? `${date}T${checkIn}:00.000Z` : undefined,
       checkOut: checkOut ? `${date}T${checkOut}:00.000Z` : undefined,
@@ -1645,12 +1660,12 @@ app.post("/api/rrhh/employees", authSub, (req, res) => {
     return res.json(att);
   });
 
-  app.post("/api/rrhh/payroll", authSub, authorize(Role.RRHH, Role.ADMIN, Role.SUPER_ADMIN), (req, res) => {
+  app.post("/api/rrhh/payroll", authSub, authorize(Role.RRHH, Role.ADMIN, Role.SUPER_ADMIN), async (req, res) => {
     const { startDate, endDate, employeeAdjustments } = req.body;
-    const period = db.payrollPeriods.create({ startDate, endDate, status: "draft", organizationId: req.orgId! });
-    const employees = db.employees.findManyByOrg(req.orgId!);
+    const period = await db.payrollPeriods.create({ startDate, endDate, status: "draft", organizationId: req.orgId! });
+    const employees = await db.employees.findManyByOrg(req.orgId!);
 
-    employees.forEach((emp) => {
+    for (const emp of employees) {
       const adj = employeeAdjustments ? employeeAdjustments[emp.id] : null;
       const base = emp.baseSalary;
       const overtime = adj ? Number(adj.overtime) || 0 : 0;
@@ -1658,23 +1673,23 @@ app.post("/api/rrhh/employees", authSub, (req, res) => {
       const deductions = adj ? Number(adj.deductions) || 0 : 0;
       const netPay = base + overtime + bonuses - deductions;
 
-      db.payrollDetails.create({ payrollPeriodId: period.id, employeeId: emp.id, baseAmount: base, overtime, bonuses, deductions, netPay });
+      await db.payrollDetails.create({ payrollPeriodId: period.id, employeeId: emp.id, baseAmount: base, overtime, bonuses, deductions, netPay });
 
-      const entry = db.journalEntries.create({ description: `Gasto Nómina Empleado: ${emp.firstName} ${emp.lastName}`, reference: period.id, status: "posted" });
-      db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "5020", debit: netPay, credit: 0 });
-      db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "1010", debit: 0, credit: netPay });
-    });
+      const entry = await db.journalEntries.create({ description: `Gasto Nómina Empleado: ${emp.firstName} ${emp.lastName}`, reference: period.id, status: "posted", organizationId: req.orgId! });
+      await db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "5020", debit: netPay, credit: 0 });
+      await db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "1010", debit: 0, credit: netPay });
+    }
     logAudit(req.user!.userId, "CREATE_PAYROLL", "PayrollPeriod", period.id, `Payroll ${startDate} to ${endDate}`);
     return res.json(period);
   });
 
   // --- User Management ---
 
-  app.get("/api/users", authSub, (req, res) => {
-    const orgBranches = db.branches.findMany().filter((b: any) => b.organizationId === req.orgId!);
+  app.get("/api/users", authSub, async (req, res) => {
+    const orgBranches = (await db.branches.findMany()).filter((b: any) => b.organizationId === req.orgId!);
     const orgBranchIds = new Set(orgBranches.map((b: any) => b.id));
-    const allUsers = db.users.findMany().filter((u: any) => orgBranchIds.has(u.branchId));
-    const branches = db.branches.findMany();
+    const allUsers = (await db.users.findMany()).filter((u: any) => orgBranchIds.has(u.branchId));
+    const branches = await db.branches.findMany();
 
     let filtered = allUsers;
     if (req.user!.role !== Role.ADMIN && req.user!.role !== Role.SUPER_ADMIN) {
@@ -1702,19 +1717,19 @@ app.post("/api/rrhh/employees", authSub, (req, res) => {
       return res.status(403).json({ error: "Solo puedes crear usuarios para tu propia sucursal" });
     }
 
-    const existing = db.users.findByEmail(email);
+    const existing = await db.users.findByEmail(email);
     if (existing) {
       return res.status(400).json({ error: "Ya existe un usuario registrado con este correo electrónico" });
     }
 
     let targetBranchId = isAdmin && branchId ? branchId : req.user!.branchId;
-    if (targetBranchId && !isBranchInOrg(targetBranchId, req.orgId!)) {
+    if (targetBranchId && !(await isBranchInOrg(targetBranchId, req.orgId!))) {
       return res.status(403).json({ error: "La sucursal especificada no pertenece a tu organización" });
     }
 
     const hashedPassword = password ? await bcrypt.hash(password, SALT_ROUNDS) : undefined;
 
-    const newUser = db.users.create({
+    const newUser = await db.users.create({
       name,
       email: email.trim().toLowerCase(),
       password: hashedPassword || (await bcrypt.hash("123456", SALT_ROUNDS)),
@@ -1730,7 +1745,7 @@ app.post("/api/rrhh/employees", authSub, (req, res) => {
     const { id } = req.params;
     const { name, email, password, role, branchId } = req.body;
 
-    const existing = db.users.findById(id);
+    const existing = await db.users.findById(id);
     if (!existing) {
       return res.status(404).json({ error: "Usuario no encontrado" });
     }
@@ -1741,7 +1756,7 @@ app.post("/api/rrhh/employees", authSub, (req, res) => {
     }
 
     if (email && email.toLowerCase() !== existing.email.toLowerCase()) {
-      const other = db.users.findByEmail(email);
+      const other = await db.users.findByEmail(email);
       if (other) {
         return res.status(400).json({ error: "El nuevo correo ya está en uso por otro usuario" });
       }
@@ -1754,19 +1769,19 @@ app.post("/api/rrhh/employees", authSub, (req, res) => {
     if (isAdmin && branchId) updateData.branchId = branchId;
     if (password && password.trim() !== "") updateData.password = await bcrypt.hash(password, SALT_ROUNDS);
 
-    const updatedUser = db.users.update(id, updateData);
+    const updatedUser = await db.users.update(id, updateData);
     logAudit(req.user!.userId, "UPDATE_USER", "User", id, `Usuario ${updatedUser?.name} actualizado`);
     return res.json({ success: true, user: { ...updatedUser, password: undefined } });
   });
 
-  app.delete("/api/users/:id", authSub, authorize(Role.ADMIN, Role.SUPER_ADMIN), (req, res) => {
+  app.delete("/api/users/:id", authSub, authorize(Role.ADMIN, Role.SUPER_ADMIN), async (req, res) => {
     const { id } = req.params;
 
     if (id === req.user!.userId) {
       return res.status(400).json({ error: "No puedes eliminar tu propio usuario en sesión activa" });
     }
 
-    const existing = db.users.findById(id);
+    const existing = await db.users.findById(id);
     if (!existing) {
       return res.status(404).json({ error: "Usuario no encontrado" });
     }
@@ -1776,32 +1791,32 @@ app.post("/api/rrhh/employees", authSub, (req, res) => {
       return res.status(403).json({ error: "Solo puedes eliminar usuarios de tu propia sucursal" });
     }
 
-    db.users.delete(id);
+    await db.users.delete(id);
     logAudit(req.user!.userId, "DELETE_USER", "User", id, `Usuario ${existing.name} (${existing.email}) eliminado`);
     return res.json({ success: true });
   });
 
   // --- Config ---
 
-  app.get("/api/configuracion", authSub, (_req, res) => {
-    const settings = db.systemSettings.findMany();
-    const logs = db.auditLogs.findMany().sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 100);
-    return res.json({ settings, logs, users: db.users.findMany() });
+  app.get("/api/configuracion", authSub, async (_req, res) => {
+    const settings = await db.systemSettings.findMany();
+    const logs = (await db.auditLogs.findMany()).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 100);
+    return res.json({ settings, logs, users: await db.users.findMany() });
   });
 
-  app.post("/api/configuracion", authSub, authorize(Role.ADMIN, Role.SUPER_ADMIN), (req, res) => {
+  app.post("/api/configuracion", authSub, authorize(Role.ADMIN, Role.SUPER_ADMIN), async (req, res) => {
     const { settings, userId } = req.body;
     if (settings && typeof settings === "object") {
-      Object.keys(settings).forEach((key) => {
-        db.systemSettings.setValue(key, String(settings[key]));
-      });
+      for (const key of Object.keys(settings)) {
+        await db.systemSettings.setValue(key, String(settings[key]));
+      }
       logAudit(userId || req.user!.userId, "UPDATE_SETTINGS", "SystemSetting", "all", JSON.stringify(settings));
     }
     return res.json({ success: true });
   });
 
-  app.post("/api/onboarding/dismiss", authSub, (req, res) => {
-    db.systemSettings.setValue("onboarding_done", "1");
+  app.post("/api/onboarding/dismiss", authSub, async (req, res) => {
+    await db.systemSettings.setValue("onboarding_done", "1");
     logAudit(req.user!.userId, "ONBOARDING_DISMISSED", "SystemSetting", "onboarding_done");
     return res.json({ success: true });
   });
@@ -1817,21 +1832,21 @@ app.post("/api/rrhh/employees", authSub, (req, res) => {
       return res.status(400).json({ error: parsed.error.errors[0].message });
     }
     const { subject, message } = parsed.data;
-    const user = db.users.findById(req.user!.userId);
+    const user = await db.users.findById(req.user!.userId);
     if (!user) {
       return res.status(404).json({ error: "Usuario no encontrado" });
     }
-    const ticket = db.supportTickets.create({
+    const ticket = await db.supportTickets.create({
       userId: user.id,
       userName: user.name,
       userEmail: user.email,
-      organizationId: req.user!.userId ? db.users.findById(req.user!.userId)?.branchId || "" : "",
+      organizationId: user.branchId || "",
       subject,
       message,
     });
     logAudit(user.id, "SUPPORT_TICKET", "SupportTicket", ticket.id, `Tu ticket "${subject}" (id: ${ticket.id})`);
 
-    const supportDestination = db.systemSettings.getValue("support_email", "");
+    const supportDestination = await db.systemSettings.getValue("support_email", "");
     if (supportDestination && supportDestination.includes("@")) {
       const sent = await sendMail(
         supportDestination,
@@ -1851,16 +1866,16 @@ app.post("/api/rrhh/employees", authSub, (req, res) => {
 
   // --- ONAT Report ---
 
-  app.get("/api/reportes/onat", authSub, (req, res) => {
+  app.get("/api/reportes/onat", authSub, async (req, res) => {
     const { month, year } = req.query;
     const m = month ? Number(month) : new Date().getMonth() + 1;
     const y = year ? Number(year) : new Date().getFullYear();
-    const rate = Number(db.systemSettings.getValue("exchange_rate_usd", "120"));
+    const rate = Number(await db.systemSettings.getValue("exchange_rate_usd", "120"));
 
-    const sales = db.sales.findManyByOrg(req.orgId!);
-    const inxs = db.cashRegisterTransactions.findManyByOrg(req.orgId!);
-    const pDetails = db.payrollDetails.findMany();
-    const invoices = db.supplierInvoices.findManyByOrg(req.orgId!);
+    const sales = await db.sales.findManyByOrg(req.orgId!);
+    const inxs = await db.cashRegisterTransactions.findManyByOrg(req.orgId!);
+    const pDetails = await db.payrollDetails.findMany();
+    const invoices = await db.supplierInvoices.findManyByOrg(req.orgId!);
 
     const reportLines: Array<{ fecha: string; concepto: string; ingreso: number; gasto: number }> = [];
 
@@ -1887,21 +1902,23 @@ app.post("/api/rrhh/employees", authSub, (req, res) => {
       }
     });
 
-    invoices.forEach((inv) => {
-      const po = inv.purchaseOrderId ? db.purchaseOrders.findMany().find((p) => p.id === inv.purchaseOrderId) : null;
+    const purchaseOrders = await db.purchaseOrders.findMany();
+    const payrollPeriods = await db.payrollPeriods.findMany();
+    for (const inv of invoices) {
+      const po = inv.purchaseOrderId ? purchaseOrders.find((p) => p.id === inv.purchaseOrderId) : null;
       const refDate = po ? po.createdAt : new Date().toISOString();
       if (isTargetMonth(refDate)) {
         const usdConverted = inv.totalUSD * rate;
         reportLines.push({ fecha: refDate.substring(0, 10), concepto: `Compra Proveedor (Factura ${inv.id.substring(0, 8)})`, ingreso: 0, gasto: inv.totalCUP + usdConverted });
       }
-    });
+    }
 
-    pDetails.forEach((d) => {
-      const p = db.payrollPeriods.findMany().find((x) => x.id === d.payrollPeriodId);
+    for (const d of pDetails) {
+      const p = payrollPeriods.find((x) => x.id === d.payrollPeriodId);
       if (p && isTargetMonth(p.startDate)) {
         reportLines.push({ fecha: p.startDate.substring(0, 10), concepto: `Gasto de Salarios - Empleado ID ${d.employeeId.substring(0, 6)}`, ingreso: 0, gasto: d.netPay });
       }
-    });
+    }
 
     reportLines.sort((a, b) => a.fecha.localeCompare(b.fecha));
 
@@ -1931,7 +1948,7 @@ app.post("/api/rrhh/employees", authSub, (req, res) => {
   } else if (process.env.NODE_ENV === "production") {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get("*", (_req, res) => {
+    app.get("*", async (_req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
     logger.info("Serving production static files from dist.");
@@ -1951,7 +1968,7 @@ const REMINDER_INTERVAL_MS = 6 * 60 * 60 * 1000;
 function scheduleSubscriptionReminders(): void {
   const run = async () => {
     try {
-      const orgs = db.organizations.findMany().filter((o: any) => o.subscriptionStatus === "active");
+      const orgs = (await db.organizations.findMany()).filter((o: any) => o.subscriptionStatus === "active");
       for (const org of orgs) {
         if (!org.subscriptionExpiresAt) continue;
         const expires = new Date(org.subscriptionExpiresAt).getTime();
@@ -1960,12 +1977,12 @@ function scheduleSubscriptionReminders(): void {
         if (daysLeft < 0 || daysLeft > 7) continue;
 
         const reminderKey = `subscription_reminder_sent_${org.id}`;
-        const lastSent = db.systemSettings.getValue(reminderKey, "");
+        const lastSent = await db.systemSettings.getValue(reminderKey, "");
         const today = new Date().toISOString().slice(0, 10);
         if (lastSent === `${today}_${expires}`) continue;
 
-        const orgBranchIds = new Set(db.branches.findMany().filter((b: any) => b.organizationId === org.id).map((b: any) => b.id));
-        const orgUsers = db.users.findMany().filter((u: any) => orgBranchIds.has(u.branchId));
+        const orgBranchIds = new Set((await db.branches.findMany()).filter((b: any) => b.organizationId === org.id).map((b: any) => b.id));
+        const orgUsers = (await db.users.findMany()).filter((u: any) => orgBranchIds.has(u.branchId));
         const payUrl = `${process.env.APP_URL || `http://localhost:${PORT}`}/?module=suscripcion`;
         let anySent = false;
         for (const user of orgUsers) {
@@ -1974,7 +1991,7 @@ function scheduleSubscriptionReminders(): void {
           anySent = anySent || sent;
         }
         if (anySent) {
-          db.systemSettings.setValue(reminderKey, `${today}_${expires}`);
+          await db.systemSettings.setValue(reminderKey, `${today}_${expires}`);
           logger.info({ orgId: org.id, daysLeft }, "Subscription reminder emails sent");
         } else {
           logger.warn({ orgId: org.id }, "SMTP not configured — subscription reminder not sent");

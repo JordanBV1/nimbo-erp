@@ -2,33 +2,59 @@ import path from "path";
 import fs from "fs";
 import Database from "better-sqlite3";
 import { logger } from "../logger.js";
+import { USE_PG } from "./db.js";
+import { getPool } from "./pg.js";
 
 const DB_PATH = path.join(process.cwd(), "db-data", "nimbo.db");
 const BACKUP_DIR = path.join(process.cwd(), "db-data", "backups");
 const BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const MAX_BACKUPS = 7;
 
+const TABLES = [
+  "organizations", "branches", "users", "categories", "taxes", "products", "variants",
+  "warehouses", "stocks", "stock_movements", "transfers", "suppliers", "purchase_orders",
+  "purchase_order_items", "supplier_invoices", "customers", "sales", "sale_items", "payments",
+  "cash_register_sessions", "orders", "order_items", "recipes", "recipe_ingredients",
+  "production_orders", "accounts", "journal_entries", "journal_entry_lines",
+  "cash_register_transactions", "employees", "attendances", "payroll_periods", "payroll_details",
+  "audit_logs", "system_settings", "subscription_payments", "password_reset_tokens", "support_tickets",
+];
+
 export async function createBackup(): Promise<string | null> {
   try {
-    if (!fs.existsSync(DB_PATH)) {
-      logger.warn("Backup skipped: database file does not exist");
-      return null;
-    }
     fs.mkdirSync(BACKUP_DIR, { recursive: true });
-
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const dest = path.join(BACKUP_DIR, `nimbo-${timestamp}.db`);
+    const ext = USE_PG ? "json" : "db";
+    const dest = path.join(BACKUP_DIR, `nimbo-${timestamp}.${ext}`);
 
-    const db = new Database(DB_PATH, { readonly: true });
-    try {
-      await db.backup(dest);
-    } finally {
-      db.close();
+    if (USE_PG) {
+      const dump: Record<string, any[]> = {};
+      const pool = getPool();
+      for (const t of TABLES) {
+        try {
+          const res = await pool.query(`SELECT * FROM ${t}`);
+          dump[t] = res.rows;
+        } catch {
+          dump[t] = [];
+        }
+      }
+      fs.writeFileSync(dest, JSON.stringify(dump, null, 2), "utf8");
+    } else {
+      if (!fs.existsSync(DB_PATH)) {
+        logger.warn("Backup skipped: database file does not exist");
+        return null;
+      }
+      const db = new Database(DB_PATH, { readonly: true });
+      try {
+        await db.backup(dest);
+      } finally {
+        db.close();
+      }
     }
 
     const backups = fs
       .readdirSync(BACKUP_DIR)
-      .filter((f) => f.startsWith("nimbo-") && f.endsWith(".db"))
+      .filter((f) => f.startsWith("nimbo-") && f.endsWith("." + ext))
       .sort();
     while (backups.length > MAX_BACKUPS) {
       const oldest = backups.shift()!;

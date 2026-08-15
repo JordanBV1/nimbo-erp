@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
+    "@types/pg": "^8.20.4",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^13.0.1",
     "cookie-parser": "^1.4.7",
@@ -30,6 +31,7 @@
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "nodemailer": "^9.0.3",
+    "pg": "^8.22.0",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
     "qrcode.react": "^4.2.0",
