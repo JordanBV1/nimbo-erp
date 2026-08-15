@@ -37,6 +37,7 @@ function getTransporter(): nodemailer.Transporter | null {
       connectionTimeout: 15000,
       greetingTimeout: 15000,
       socketTimeout: 15000,
+      socketOptions: { family: 4 },
     });
   }
   return transporter;

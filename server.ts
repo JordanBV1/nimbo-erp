@@ -349,6 +349,7 @@ async function registerAppInternal(): Promise<express.Express> {
       connectionTimeout: 20000,
       greetingTimeout: 20000,
       socketTimeout: 20000,
+      socketOptions: { family: 4 },
     });
     try {
       await t.verify();
