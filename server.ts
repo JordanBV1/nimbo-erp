@@ -17,7 +17,8 @@ import { db, initializeDatabase } from "./src/db/db.js";
 import { Role, BusinessType, Currency } from "./src/types.js";
 import { logger, httpLogger } from "./src/logger.js";
 import { scheduleBackup, createBackup } from "./src/db/backup.js";
-import { sendPasswordResetEmail, sendMail, sendSubscriptionReminderEmail } from "./src/mailer.js";
+import { sendPasswordResetEmail, sendMail, sendSubscriptionReminderEmail, getMailerConfig } from "./src/mailer.js";
+import nodemailer from "nodemailer";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const JWT_SECRET = process.env.JWT_SECRET || (() => {
@@ -337,8 +338,27 @@ async function registerAppInternal(): Promise<express.Express> {
     });
   });
 
-  // --- Auth Routes ---
+  app.post("/api/smtp/debug", authenticate, authorize(Role.SUPER_ADMIN), async (_req, res) => {
+    const cfg = getMailerConfig();
+    if (!cfg) return res.json({ configured: false });
+    const t = nodemailer.createTransport({
+      host: cfg.host,
+      port: cfg.port,
+      secure: cfg.secure,
+      auth: cfg.user ? { user: cfg.user, pass: cfg.pass } : undefined,
+      connectionTimeout: 20000,
+      greetingTimeout: 20000,
+      socketTimeout: 20000,
+    });
+    try {
+      await t.verify();
+      return res.json({ configured: true, verified: true });
+    } catch (e: any) {
+      return res.json({ configured: true, verified: false, error: e?.message || String(e), code: e?.code || null, response: e?.response || null });
+    }
+  });
 
+  // --- Auth Routes ---
   app.post("/api/auth/login", async (req, res) => {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) {
