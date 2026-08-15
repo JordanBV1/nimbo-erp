@@ -1,12 +1,14 @@
 import path from "path";
 import fs from "fs";
-import Database from "better-sqlite3";
+import type Database from "better-sqlite3";
+import { createRequire } from "module";
 import { logger } from "../logger.js";
 import { USE_PG } from "./db.js";
 import { getPool } from "./pg.js";
 
-const DB_PATH = path.join(process.cwd(), "db-data", "nimbo.db");
-const BACKUP_DIR = path.join(process.cwd(), "db-data", "backups");
+const DB_BASE = process.env.VERCEL ? path.join("/tmp", "nimbo") : path.join(process.cwd(), "db-data");
+const DB_PATH = process.env.DB_PATH || path.join(DB_BASE, "nimbo.db");
+const BACKUP_DIR = process.env.BACKUP_DIR || path.join(DB_BASE, "backups");
 const BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const MAX_BACKUPS = 7;
 
@@ -44,7 +46,11 @@ export async function createBackup(): Promise<string | null> {
         logger.warn("Backup skipped: database file does not exist");
         return null;
       }
-      const db = new Database(DB_PATH, { readonly: true });
+      const lazyRequire = createRequire(
+        import.meta.url || path.join(process.cwd(), "server.js"),
+      );
+      const DatabaseCtor = lazyRequire("better-sqlite3") as typeof Database;
+      const db = new DatabaseCtor(DB_PATH, { readonly: true });
       try {
         await db.backup(dest);
       } finally {

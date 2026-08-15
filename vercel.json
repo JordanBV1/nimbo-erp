@@ -1,8 +1,19 @@
 {
-  "buildCommand": "npx vite build",
+  "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 60
+    }
+  },
+  "crons": [
+    { "path": "/api/cron/backup", "schedule": "0 3 * * *" },
+    { "path": "/api/cron/reminders", "schedule": "30 3 * * *" }
+  ],
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "https://nimbo-erp.onrender.com/api/$1" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/api/cron/backup", "destination": "/api/cron/backup" },
+    { "source": "/api/cron/reminders", "destination": "/api/cron/reminders" },
+    { "source": "/api/(.*)", "destination": "/api/index" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }

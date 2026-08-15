@@ -233,7 +233,16 @@ const saleSchema = z.object({
 
 export const app = express();
 
-async function startServer() {
+let appReady: Promise<express.Express> | null = null;
+
+export function registerApp(): Promise<express.Express> {
+  if (!appReady) {
+    appReady = registerAppInternal();
+  }
+  return appReady;
+}
+
+async function registerAppInternal(): Promise<express.Express> {
   app.set("trust proxy", 1);
 
   // Security middleware
@@ -1945,7 +1954,7 @@ app.post("/api/rrhh/employees", authSub, async (req, res) => {
     });
     app.use(vite.middlewares);
     logger.info("Vite development middleware integrated.");
-  } else if (process.env.NODE_ENV === "production") {
+  } else if (process.env.NODE_ENV === "production" && !process.env.VERCEL) {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", async (_req, res) => {
@@ -1954,6 +1963,11 @@ app.post("/api/rrhh/employees", authSub, async (req, res) => {
     logger.info("Serving production static files from dist.");
   }
 
+  return app;
+}
+
+async function startServer() {
+  await registerApp();
   if (process.env.NODE_ENV !== "test") {
     app.listen(PORT, "0.0.0.0", () => {
       logger.info({ port: PORT, nodeEnv: process.env.NODE_ENV }, "Full-Stack ERP/POS server running");
@@ -1965,44 +1979,49 @@ app.post("/api/rrhh/employees", authSub, async (req, res) => {
 
 const REMINDER_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
-function scheduleSubscriptionReminders(): void {
-  const run = async () => {
-    try {
-      const orgs = (await db.organizations.findMany()).filter((o: any) => o.subscriptionStatus === "active");
-      for (const org of orgs) {
-        if (!org.subscriptionExpiresAt) continue;
-        const expires = new Date(org.subscriptionExpiresAt).getTime();
-        const now = Date.now();
-        const daysLeft = Math.ceil((expires - now) / (24 * 60 * 60 * 1000));
-        if (daysLeft < 0 || daysLeft > 7) continue;
+export async function runSubscriptionReminders(): Promise<void> {
+  try {
+    const orgs = (await db.organizations.findMany()).filter((o: any) => o.subscriptionStatus === "active");
+    for (const org of orgs) {
+      if (!org.subscriptionExpiresAt) continue;
+      const expires = new Date(org.subscriptionExpiresAt).getTime();
+      const now = Date.now();
+      const daysLeft = Math.ceil((expires - now) / (24 * 60 * 60 * 1000));
+      if (daysLeft < 0 || daysLeft > 7) continue;
 
-        const reminderKey = `subscription_reminder_sent_${org.id}`;
-        const lastSent = await db.systemSettings.getValue(reminderKey, "");
-        const today = new Date().toISOString().slice(0, 10);
-        if (lastSent === `${today}_${expires}`) continue;
+      const reminderKey = `subscription_reminder_sent_${org.id}`;
+      const lastSent = await db.systemSettings.getValue(reminderKey, "");
+      const today = new Date().toISOString().slice(0, 10);
+      if (lastSent === `${today}_${expires}`) continue;
 
-        const orgBranchIds = new Set((await db.branches.findMany()).filter((b: any) => b.organizationId === org.id).map((b: any) => b.id));
-        const orgUsers = (await db.users.findMany()).filter((u: any) => orgBranchIds.has(u.branchId));
-        const payUrl = `${process.env.APP_URL || `http://localhost:${PORT}`}/?module=suscripcion`;
-        let anySent = false;
-        for (const user of orgUsers) {
-          if (!user.email) continue;
-          const sent = await sendSubscriptionReminderEmail(user.email, org.name, daysLeft, payUrl);
-          anySent = anySent || sent;
-        }
-        if (anySent) {
-          await db.systemSettings.setValue(reminderKey, `${today}_${expires}`);
-          logger.info({ orgId: org.id, daysLeft }, "Subscription reminder emails sent");
-        } else {
-          logger.warn({ orgId: org.id }, "SMTP not configured — subscription reminder not sent");
-        }
+      const orgBranchIds = new Set((await db.branches.findMany()).filter((b: any) => b.organizationId === org.id).map((b: any) => b.id));
+      const orgUsers = (await db.users.findMany()).filter((u: any) => orgBranchIds.has(u.branchId));
+      const payUrl = `${process.env.APP_URL || `http://localhost:${PORT}`}/?module=suscripcion`;
+      let anySent = false;
+      for (const user of orgUsers) {
+        if (!user.email) continue;
+        const sent = await sendSubscriptionReminderEmail(user.email, org.name, daysLeft, payUrl);
+        anySent = anySent || sent;
       }
-    } catch (err) {
-      logger.error({ err }, "Subscription reminder scheduler error");
+      if (anySent) {
+        await db.systemSettings.setValue(reminderKey, `${today}_${expires}`);
+        logger.info({ orgId: org.id, daysLeft }, "Subscription reminder emails sent");
+      } else {
+        logger.warn({ orgId: org.id }, "SMTP not configured — subscription reminder not sent");
+      }
     }
-  };
-  run();
-  setInterval(run, REMINDER_INTERVAL_MS);
+  } catch (err) {
+    logger.error({ err }, "Subscription reminder scheduler error");
+  }
 }
 
-startServer();
+function scheduleSubscriptionReminders(): void {
+  runSubscriptionReminders();
+  setInterval(() => {
+    runSubscriptionReminders();
+  }, REMINDER_INTERVAL_MS);
+}
+
+if (!process.env.VERCEL) {
+  startServer();
+}

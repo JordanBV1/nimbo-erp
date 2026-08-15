@@ -1,5 +1,6 @@
-import Database from "better-sqlite3";
+import type Database from "better-sqlite3";
 import path from "path";
+import { createRequire } from "module";
 import fs from "fs";
 import bcrypt from "bcryptjs";
 import {
@@ -20,7 +21,11 @@ function getDb(): Database.Database {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    _sql = new Database(DB_PATH);
+    const lazyRequire = createRequire(
+      import.meta.url || path.join(process.cwd(), "server.js"),
+    );
+    const DatabaseCtor = lazyRequire("better-sqlite3") as typeof Database;
+    _sql = new DatabaseCtor(DB_PATH);
     _sql.pragma("journal_mode = WAL");
     _sql.pragma("foreign_keys = ON");
   }

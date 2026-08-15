@@ -9,3 +9,6 @@ promo/
 *.log
 .env*
 !.env.example
+
+.vercel
+.env*
