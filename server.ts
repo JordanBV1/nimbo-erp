@@ -350,7 +350,7 @@ async function registerAppInternal(): Promise<express.Express> {
       greetingTimeout: 20000,
       socketTimeout: 20000,
       socketOptions: { family: 4 },
-    });
+    } as any);
     try {
       await t.verify();
       return res.json({ configured: true, verified: true });
