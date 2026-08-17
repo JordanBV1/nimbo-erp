@@ -144,6 +144,8 @@ export default function App() {
   const [exchangeRate, setExchangeRate] = useState<number>(120);
   const [subscriptionPayments, setSubscriptionPayments] = useState<any[]>([]);
   const [isLoadingPayments, setIsLoadingPayments] = useState<boolean>(false);
+  const [pendingPayments, setPendingPayments] = useState<any[]>([]);
+  const [isLoadingPending, setIsLoadingPending] = useState<boolean>(false);
   const [branches, setBranches] = useState<any[]>([]);
   const [transfermovilPhone, setTransfermovilPhone] = useState<string>("+53 51234567");
   const [enzonaUser, setEnzonaUser] = useState<string>("nimbo.erp");
@@ -346,8 +348,49 @@ export default function App() {
     }
   };
 
+  const fetchPendingPayments = async () => {
+    setIsLoadingPending(true);
+    try {
+      const res = await fetch("/api/subscription/payments/pending");
+      if (res.ok) {
+        setPendingPayments(await res.json());
+      }
+    } catch (err) {
+      console.error("Failed to fetch pending payments:", err);
+    } finally {
+      setIsLoadingPending(false);
+    }
+  };
+
+  const confirmPayment = async (id: string) => {
+    try {
+      const res = await fetch(`/api/subscription/payments/${id}/confirm`, { method: "POST" });
+      const data = await res.json();
+      triggerToast(data.message || "Pago confirmado", res.ok ? "success" : "error");
+      if (res.ok) {
+        fetchPendingPayments();
+        fetchSubscriptionPayments();
+        loadAllData();
+      }
+    } catch {
+      triggerToast("Fallo de conexión al confirmar el pago.", "error");
+    }
+  };
+
+  const rejectPayment = async (id: string) => {
+    try {
+      const res = await fetch(`/api/subscription/payments/${id}/reject`, { method: "POST" });
+      const data = await res.json();
+      triggerToast(data.message || "Pago rechazado", res.ok ? "success" : "error");
+      if (res.ok) fetchPendingPayments();
+    } catch {
+      triggerToast("Fallo de conexión al rechazar el pago.", "error");
+    }
+  };
+
   useEffect(() => {
     loadAllData();
+    if (user?.role === Role.SUPER_ADMIN) fetchPendingPayments();
   }, [user]);
 
   useEffect(() => {
@@ -522,15 +565,10 @@ export default function App() {
       });
       if (res.ok) {
         const data = await res.json();
-        setOrg(data.organization);
-        localStorage.setItem("nimbo_org", JSON.stringify(data.organization));
-        triggerToast("¡Suscripción activada/renovada con éxito!", "success");
+        triggerToast(data.message || "Pago enviado. Pendiente de confirmación.", "success");
         setPaymentTxId("");
         setPaymentPhone("");
-        if (data.receipt) {
-          setPaymentReceipt(data.receipt);
-        }
-        await fetchSubscriptionPayments(data.organization.id);
+        await fetchSubscriptionPayments(data.payment?.organizationId || org.id);
       } else {
         const err = await res.json();
         triggerToast(err.error || "Error al procesar el pago", "error");
@@ -1509,6 +1547,72 @@ export default function App() {
                   </form>
                 </div>
               </div>
+
+              {/* Pending Payments Panel (solo SUPER_ADMIN) */}
+              {user?.role === Role.SUPER_ADMIN && (
+                <div className="bg-[#121214] border border-amber-500/20 rounded-3xl p-6 space-y-4" id="pending-payments-panel">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-white tracking-tight">Pagos Pendientes de Confirmación</h3>
+                      <p className="text-[11px] text-slate-400 mt-0.5">Pagos reportados por clientes que esperan tu verificación.</p>
+                    </div>
+                    <button
+                      onClick={() => fetchPendingPayments()}
+                      className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-all text-xs flex items-center space-x-1 cursor-pointer"
+                      title="Actualizar pendientes"
+                    >
+                      <svg className={`h-4 w-4 ${isLoadingPending ? 'animate-spin' : ''}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 4.75" />
+                      </svg>
+                      <span>Actualizar</span>
+                    </button>
+                  </div>
+
+                  {isLoadingPending ? (
+                    <div className="flex flex-col items-center justify-center py-10 space-y-3">
+                      <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+                      <p className="text-xs text-slate-400 font-medium">Cargando pendientes...</p>
+                    </div>
+                  ) : pendingPayments.length === 0 ? (
+                    <div className="border border-dashed border-slate-800 rounded-2xl p-8 text-center text-slate-500 text-xs space-y-1">
+                      <p className="font-bold text-slate-400">Sin pagos pendientes</p>
+                      <p className="text-[11px]">No hay pagos reportados esperando confirmación.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {pendingPayments.map((p) => (
+                        <div key={p.id} className="border border-slate-800 rounded-2xl p-4 flex flex-wrap items-center gap-3 bg-slate-950/30">
+                          <div className="flex-1 min-w-[200px]">
+                            <p className="text-white font-bold text-xs">{p.orgName}</p>
+                            <p className="text-[11px] text-slate-400 font-mono mt-0.5">TxID: {p.transactionId}</p>
+                            <p className="text-[11px] text-slate-400">
+                              <span className="capitalize">{p.platform === "transfermovil" ? "Transfermóvil" : "Enzona"}</span>
+                              {p.phone ? ` · ${p.phone}` : ""} · {new Date(p.date).toLocaleString("es-CU")}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-white font-mono font-bold">{p.amount.toLocaleString("es-CU", { minimumFractionDigits: 2 })} {p.currency}</p>
+                          </div>
+                          <div className="flex space-x-2">
+                            <button
+                              onClick={() => confirmPayment(p.id)}
+                              className="bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl px-4 py-2 text-xs font-bold transition-all cursor-pointer"
+                            >
+                              Confirmar
+                            </button>
+                            <button
+                              onClick={() => rejectPayment(p.id)}
+                              className="bg-rose-600 hover:bg-rose-500 text-white rounded-xl px-4 py-2 text-xs font-bold transition-all cursor-pointer"
+                            >
+                              Rechazar
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Payment History Table */}
               <div className="bg-[#121214] border border-slate-800 rounded-3xl p-6 space-y-4" id="subscription-payments-table">

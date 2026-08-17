@@ -732,20 +732,7 @@ async function registerAppInternal(): Promise<express.Express> {
       return res.status(403).json({ error: "No puedes pagar por una organización que no es tuya" });
     }
 
-    const expires = new Date();
-    expires.setDate(expires.getDate() + 30);
-
-    const updatedOrg = await db.organizations.update(orgId, {
-      subscriptionStatus: "active",
-      subscriptionExpiresAt: expires.toISOString(),
-      lastPaymentDate: new Date().toISOString(),
-      paymentPlatform: platform,
-      paymentPhone: phone || "",
-      paymentTxId: transactionId,
-    });
-
     const auditUserId = userId || req.user!.userId;
-    logAudit(auditUserId, "PAY_SUBSCRIPTION", "Organization", orgId, `Paid ${amount} CUP via ${platform} with TxId: ${transactionId}`);
 
     let paymentRecord: any = null;
     try {
@@ -756,53 +743,116 @@ async function registerAppInternal(): Promise<express.Express> {
         platform,
         phone: phone || "",
         transactionId,
-        status: "verified",
+        status: "pending",
       });
     } catch (e) {
       logger.error({ err: e }, "Failed to create subscriptionPayment record");
+      return res.status(500).json({ error: "Fallo al registrar el pago. Intenta de nuevo." });
     }
 
-    try {
-      const trans = await db.cashRegisterTransactions.create({
-        amount: Number(amount),
-        type: "income",
-        currency: Currency.CUP,
-        description: `Pago mensual suscripción Nimbo ERP: Org ${org.name} (Plataforma: ${platform}, Ref: ${transactionId})`,
-        category: "Suscripciones",
-        userId: auditUserId,
-      });
-      await db.journalEntries.create({
-        description: `Ingreso por Suscripción mensual ERP: ${org.name}`,
-        reference: trans.id,
-        status: "posted",
-      });
-    } catch (e) {
-      logger.error({ err: e }, "Failed to log subscription to journal");
-    }
-
-    const payer = await db.users.findById(auditUserId);
-    const branchCount = orgBranchIds.size;
+    logAudit(auditUserId, "PAY_SUBSCRIPTION_REPORTED", "Organization", orgId, `Reported ${amount} CUP via ${platform} with TxId: ${transactionId} (pending confirmation)`);
 
     return res.json({
       success: true,
-      message: "Pago registrado con éxito. Suscripción renovada por 30 días.",
-      organization: updatedOrg,
-      receipt: {
-        paymentId: paymentRecord?.id || null,
-        orgName: org.name,
-        businessName: await db.systemSettings.getValue("business_name", "Nimbo ERP"),
-        amount: Number(amount),
-        currency: "CUP",
-        platform,
-        transactionId,
-        phone: phone || "",
-        date: new Date().toISOString(),
-        expiresAt: expires.toISOString(),
-        payerName: payer?.name || "",
-        payerEmail: payer?.email || "",
-        branchCount,
-      },
+      message: "Pago reportado. Pendiente de confirmación por el administrador.",
+      payment: paymentRecord,
     });
+  });
+
+  app.get("/api/subscription/payments/pending", authenticate, authorize(Role.SUPER_ADMIN), async (_req, res) => {
+    try {
+      const allPayments = await db.subscriptionPayments.findMany();
+      const orgs = await db.organizations.findMany();
+      const orgNameById = new Map(orgs.map((o: any) => [o.id, o.name]));
+      const pending = allPayments
+        .filter((p: any) => p.status === "pending")
+        .map((p: any) => ({ ...p, orgName: orgNameById.get(p.organizationId) || "—" }))
+        .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      return res.json(pending);
+    } catch (e) {
+      logger.error({ err: e }, "Failed to fetch pending payments");
+      return res.status(500).json({ error: "Fallo al obtener pagos pendientes" });
+    }
+  });
+
+  app.post("/api/subscription/payments/:id/confirm", authenticate, authorize(Role.SUPER_ADMIN), async (req, res) => {
+    const { id } = req.params;
+    try {
+      const allPayments = await db.subscriptionPayments.findMany();
+      const payment = allPayments.find((p: any) => p.id === id);
+      if (!payment) {
+        return res.status(404).json({ error: "Pago no encontrado" });
+      }
+      if (payment.status !== "pending") {
+        return res.status(400).json({ error: "Este pago ya fue procesado" });
+      }
+
+      const org = await db.organizations.findById(payment.organizationId);
+      if (!org) {
+        return res.status(404).json({ error: "Organización no encontrada" });
+      }
+
+      await db.subscriptionPayments.update(id, { status: "verified" });
+
+      const now = new Date();
+      const currentExpiry = org.subscriptionExpiresAt ? new Date(org.subscriptionExpiresAt) : null;
+      const base = currentExpiry && currentExpiry > now ? currentExpiry : now;
+      const expires = new Date(base.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+      await db.organizations.update(org.id, {
+        subscriptionStatus: "active",
+        subscriptionExpiresAt: expires.toISOString(),
+        lastPaymentDate: now.toISOString(),
+        paymentPlatform: payment.platform,
+        paymentPhone: payment.phone || "",
+        paymentTxId: payment.transactionId,
+      });
+
+      try {
+        const trans = await db.cashRegisterTransactions.create({
+          amount: Number(payment.amount),
+          type: "income",
+          currency: Currency.CUP,
+          description: `Pago mensual suscripción Nimbo ERP: Org ${org.name} (Plataforma: ${payment.platform}, Ref: ${payment.transactionId})`,
+          category: "Suscripciones",
+          userId: req.user!.userId,
+        });
+        await db.journalEntries.create({
+          description: `Ingreso por Suscripción mensual ERP: ${org.name}`,
+          reference: trans.id,
+          status: "posted",
+        });
+      } catch (e) {
+        logger.error({ err: e }, "Failed to log subscription to journal");
+      }
+
+      logAudit(req.user!.userId, "PAY_SUBSCRIPTION_CONFIRMED", "Organization", org.id, `Confirmed ${payment.amount} CUP via ${payment.platform} with TxId: ${payment.transactionId}. Expires: ${expires.toISOString()}`);
+
+      return res.json({ success: true, message: "Pago confirmado. Suscripción activada por 30 días.", payment: { ...payment, status: "verified" }, organization: { ...org, subscriptionStatus: "active", subscriptionExpiresAt: expires.toISOString() } });
+    } catch (e) {
+      logger.error({ err: e }, "Failed to confirm payment");
+      return res.status(500).json({ error: "Fallo al confirmar el pago" });
+    }
+  });
+
+  app.post("/api/subscription/payments/:id/reject", authenticate, authorize(Role.SUPER_ADMIN), async (req, res) => {
+    const { id } = req.params;
+    try {
+      const allPayments = await db.subscriptionPayments.findMany();
+      const payment = allPayments.find((p: any) => p.id === id);
+      if (!payment) {
+        return res.status(404).json({ error: "Pago no encontrado" });
+      }
+      if (payment.status !== "pending") {
+        return res.status(400).json({ error: "Este pago ya fue procesado" });
+      }
+      await db.subscriptionPayments.update(id, { status: "rejected" });
+      logAudit(req.user!.userId, "PAY_SUBSCRIPTION_REJECTED", "Organization", payment.organizationId, `Rejected ${payment.amount} CUP via ${payment.platform} with TxId: ${payment.transactionId}`);
+      return res.json({ success: true, message: "Pago rechazado." });
+    } catch (e) {
+      logger.error({ err: e }, "Failed to reject payment");
+      return res.status(500).json({ error: "Fallo al rechazar el pago" });
+    }
   });
 
   // --- Products ---
