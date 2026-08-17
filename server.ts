@@ -17,8 +17,7 @@ import { db, initializeDatabase } from "./src/db/db.js";
 import { Role, BusinessType, Currency } from "./src/types.js";
 import { logger, httpLogger } from "./src/logger.js";
 import { scheduleBackup, createBackup } from "./src/db/backup.js";
-import { sendPasswordResetEmail, sendMail, sendSubscriptionReminderEmail, getMailerConfig } from "./src/mailer.js";
-import nodemailer from "nodemailer";
+import { sendPasswordResetEmail, sendMail, sendSubscriptionReminderEmail, probeMail } from "./src/mailer.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const JWT_SECRET = process.env.JWT_SECRET || (() => {
@@ -338,25 +337,13 @@ async function registerAppInternal(): Promise<express.Express> {
     });
   });
 
-  app.post("/api/smtp/debug", authenticate, authorize(Role.SUPER_ADMIN), async (_req, res) => {
-    const cfg = getMailerConfig();
-    if (!cfg) return res.json({ configured: false });
-    const t = nodemailer.createTransport({
-      host: cfg.host,
-      port: cfg.port,
-      secure: cfg.secure,
-      auth: cfg.user ? { user: cfg.user, pass: cfg.pass } : undefined,
-      connectionTimeout: 20000,
-      greetingTimeout: 20000,
-      socketTimeout: 20000,
-      socketOptions: { family: 4 },
-    } as any);
-    try {
-      await t.verify();
-      return res.json({ configured: true, verified: true });
-    } catch (e: any) {
-      return res.json({ configured: true, verified: false, error: e?.message || String(e), code: e?.code || null, response: e?.response || null });
+  app.post("/api/smtp/debug", authenticate, authorize(Role.SUPER_ADMIN), async (req, res) => {
+    const probe = await probeMail();
+    let sent = false;
+    if (probe.ok && req.user?.email) {
+      sent = await sendMail(req.user.email, "Prueba Nimbo ERP", "<p>Si recibes esto, el envío de email funciona.</p>");
     }
+    return res.json({ ...probe, testEmailSent: sent });
   });
 
   // --- Auth Routes ---

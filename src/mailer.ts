@@ -10,6 +10,13 @@ export interface MailerConfig {
   secure: boolean;
 }
 
+export interface GmailApiConfig {
+  user: string;
+  clientId: string;
+  clientSecret: string;
+  refreshToken: string;
+}
+
 export function getMailerConfig(): MailerConfig | null {
   const host = process.env.SMTP_HOST;
   if (!host) return null;
@@ -21,6 +28,82 @@ export function getMailerConfig(): MailerConfig | null {
     from: process.env.SMTP_FROM || process.env.SMTP_USER || "no-reply@nimbo-erp.com",
     secure: process.env.SMTP_SECURE === "true",
   };
+}
+
+export function getGmailApiConfig(): GmailApiConfig | null {
+  const user = process.env.GMAIL_USER;
+  const clientId = process.env.GMAIL_CLIENT_ID;
+  const clientSecret = process.env.GMAIL_CLIENT_SECRET;
+  const refreshToken = process.env.GMAIL_REFRESH_TOKEN;
+  if (!user || !clientId || !clientSecret || !refreshToken) return null;
+  return { user, clientId, clientSecret, refreshToken };
+}
+
+export type MailMethod = "gmail-api" | "smtp" | "none";
+
+export function getMailMethod(): MailMethod {
+  if (getGmailApiConfig()) return "gmail-api";
+  if (getMailerConfig()) return "smtp";
+  return "none";
+}
+
+let cachedAccessToken: { token: string; expiresAt: number } | null = null;
+
+export async function getGmailAccessToken(cfg: GmailApiConfig): Promise<string> {
+  if (cachedAccessToken && cachedAccessToken.expiresAt > Date.now() + 60_000) {
+    return cachedAccessToken.token;
+  }
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: cfg.clientId,
+      client_secret: cfg.clientSecret,
+      refresh_token: cfg.refreshToken,
+      grant_type: "refresh_token",
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`Gmail token refresh failed: ${res.status} ${await res.text()}`);
+  }
+  const data: any = await res.json();
+  cachedAccessToken = { token: data.access_token, expiresAt: Date.now() + (data.expires_in || 3600) * 1000 };
+  return cachedAccessToken.token;
+}
+
+function buildMime(from: string, to: string, subject: string, html: string): string {
+  return [
+    `From: ${from}`,
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    "Content-Type: text/html; charset=UTF-8",
+    "MIME-Version: 1.0",
+    "",
+    html,
+  ].join("\r\n");
+}
+
+export async function sendGmailApiMail(cfg: GmailApiConfig, to: string, subject: string, html: string): Promise<boolean> {
+  try {
+    const token = await getGmailAccessToken(cfg);
+    const mime = buildMime(cfg.user, to, subject, html);
+    const raw = Buffer.from(mime, "utf8").toString("base64url");
+    const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ raw }),
+    });
+    if (!res.ok) {
+      const detail = await res.text();
+      logger.error({ to, subject, status: res.status, detail }, "Gmail API send failed");
+      return false;
+    }
+    logger.info({ to, subject }, "Email sent via Gmail API");
+    return true;
+  } catch (err) {
+    logger.error({ err, to, subject }, "Gmail API send error");
+    return false;
+  }
 }
 
 let transporter: nodemailer.Transporter | null = null;
@@ -44,10 +127,14 @@ function getTransporter(): nodemailer.Transporter | null {
 }
 
 export async function sendMail(to: string, subject: string, html: string): Promise<boolean> {
+  const gmailCfg = getGmailApiConfig();
+  if (gmailCfg) {
+    return sendGmailApiMail(gmailCfg, to, subject, html);
+  }
   const cfg = getMailerConfig();
   const t = getTransporter();
   if (!cfg || !t) {
-    logger.warn({ to, subject }, "SMTP not configured — email not sent. Set SMTP_HOST/SMTP_USER/SMTP_PASS to enable.");
+    logger.warn({ to, subject }, "Email transport not configured — email not sent. Set GMAIL_* or SMTP_* env vars to enable.");
     return false;
   }
   try {
@@ -57,6 +144,44 @@ export async function sendMail(to: string, subject: string, html: string): Promi
   } catch (err) {
     logger.error({ err, to, subject }, "Email send failed");
     return false;
+  }
+}
+
+export async function probeMail(): Promise<{
+  method: MailMethod;
+  configured: boolean;
+  ok: boolean;
+  error?: string;
+  code?: string | null;
+}> {
+  const gmailCfg = getGmailApiConfig();
+  if (gmailCfg) {
+    try {
+      await getGmailAccessToken(gmailCfg);
+      return { method: "gmail-api", configured: true, ok: true };
+    } catch (e: any) {
+      return { method: "gmail-api", configured: true, ok: false, error: e?.message || String(e) };
+    }
+  }
+  const cfg = getMailerConfig();
+  if (!cfg) {
+    return { method: "none", configured: false, ok: false, error: "No GMAIL_* ni SMTP_* configurado" };
+  }
+  try {
+    const t = nodemailer.createTransport({
+      host: cfg.host,
+      port: cfg.port,
+      secure: cfg.secure,
+      auth: cfg.user ? { user: cfg.user, pass: cfg.pass } : undefined,
+      connectionTimeout: 20000,
+      greetingTimeout: 20000,
+      socketTimeout: 20000,
+      socketOptions: { family: 4 },
+    } as any);
+    await t.verify();
+    return { method: "smtp", configured: true, ok: true };
+  } catch (e: any) {
+    return { method: "smtp", configured: true, ok: false, error: e?.message || String(e), code: e?.code || null };
   }
 }
 
