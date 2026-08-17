@@ -7,7 +7,7 @@
 
 Nimbo ERP es una aplicación full-stack (React + Express + SQLite) para administrar un negocio completo: ventas en el punto de venta, inventario y stock, pedidos, compras a proveedores, clientes, producción, contabilidad, recursos humanos, reportes y suscripción del servicio.
 
-Incluye **registro de clientes por suscripción mensual** (pago vía Transfermóvil/EnZona), precios dinámicos según cantidad de locales, onboarding guiado, centro de ayuda con tickets, exportación de datos (CSV/JSON) y recibo de pago en PDF.
+Incluye **registro de clientes por suscripción mensual** (pago vía Transfermóvil/EnZona con **confirmación manual por el administrador**), precios dinámicos según cantidad de locales, onboarding guiado, centro de ayuda con tickets, exportación de datos (CSV/JSON) y recibo de pago en PDF.
 
 ## Funcionalidades
 
@@ -22,7 +22,7 @@ Incluye **registro de clientes por suscripción mensual** (pago vía Transfermó
 - **Contabilidad** (cuentas, asientos, transacciones de caja)
 - **Recursos Humanos** (empleados)
 - **Reportes / ONAT**
-- **Suscripción mensual** con pago por Transfermóvil/EnZona y recibo PDF
+- **Suscripción mensual** con pago por Transfermóvil/EnZona, confirmación manual por el admin y recibo PDF
 - **Perfil de usuario** auto-servicio (cambio de nombre, correo y contraseña)
 - **Onboarding guiado** para nuevos usuarios
 - **Centro de ayuda** con soporte por WhatsApp y tickets
@@ -36,12 +36,12 @@ Incluye **registro de clientes por suscripción mensual** (pago vía Transfermó
 | --- | --- |
 | Frontend | React 19, Tailwind CSS 4, Vite, Recharts, jsPDF, lucide-react |
 | Backend | Node.js, Express 4, TypeScript |
-| Base de datos | SQLite (better-sqlite3) |
+| Base de datos | PostgreSQL en Supabase (SQLite solo para desarrollo/fallback) |
 | Auth | JWT (jsonwebtoken) + bcrypt |
-| Email | Nodemailer (SMTP) |
+| Email | Gmail API / EmailJS / SMTP (fallback: enlace de recuperación en pantalla) |
 | IA | Google Gemini (via @google/genai) |
 | Testing | Vitest + Supertest |
-| Deploy | Render (Docker, `node dist/server.cjs`) |
+| Deploy | Render (`node dist/server.cjs`) |
 
 ## Requisitos
 
@@ -91,9 +91,16 @@ Ver `.env.example`. Todas son opcionales en desarrollo salvo `JWT_SECRET` en pro
 | `NODE_ENV` | `development` o `production` | Sí (prod) |
 | `PORT` | Puerto del servidor (default `3000`) | No |
 | `JWT_SECRET` | Clave para firmar tokens JWT | Sí (prod) |
+| `DATABASE_URL` | Cadena de conexión PostgreSQL (Supabase) | No (usa SQLite si falta) |
 | `GEMINI_API_KEY` | API key de Google Gemini (asistente IA) | No |
 | `APP_URL` | URL pública (CORS, enlaces de email, paywall) | Sí (prod) |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | SMTP para emails (reset de contraseña, recordatorios de suscripción, notificaciones de tickets) | No (sin ellos los emails solo se registran) |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `SMTP_SECURE` | SMTP para emails | No (ver Email) |
+| `GMAIL_USER`, `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` | Gmail API por HTTPS (gratis, funciona en Render free) | No |
+| `EMAILJS_SERVICE_ID`, `EMAILJS_TEMPLATE_ID`, `EMAILJS_PUBLIC_KEY` | EmailJS (gratis, sin SMTP) | No |
+
+### Email
+
+Prioridad de transporte: `GMAIL_*` → `EMAILJS_*` → `SMTP_*`. En el plan free de Render los puertos SMTP (25/465/587) están bloqueados, por eso se recomienda Gmail API o EmailJS (HTTPS 443). Si no hay ningún transporte configurado, los correos no se envían y la app **muestra el enlace de recuperación en pantalla** para poder reenviarlo por WhatsApp.
 
 ### Configuración de negocio (en la app, módulo Configuración)
 
@@ -118,8 +125,12 @@ El repositorio incluye `render.yaml` (blueprint) y `Dockerfile`. Un commit a `ma
 
 - Build: `npm ci && npm run build`
 - Start: `node dist/server.cjs`
-- Variables: `NODE_ENV=production`, `APP_URL`, `JWT_SECRET` (autogenerada), `PORT=10000`, `SMTP_*`
-- Disco: recomienda `nimbo-db-data` montado en `/app/db-data` para persistir la base de datos (en el plan free de Render el sistema de archivos es efímero: **los datos se pierden en cada deploy** si no hay disco).
+- Variables: `NODE_ENV=production`, `APP_URL`, `JWT_SECRET` (autogenerada), `PORT=10000`, `DATABASE_URL` (Supabase), `SMTP_*`
+- Base de datos: **PostgreSQL en Supabase** (el plan free de Render no tiene disco persistente; con Supabase los datos sobreviven a cada deploy)
+
+### Confirmación de pagos
+
+Los clientes reportan su pago de suscripción y este queda en estado **pendiente**. El administrador (`SUPER_ADMIN`) lo confirma o rechaza desde el panel "Pagos Pendientes de Confirmación" en la sección Suscripción. Solo al confirmarlo se activa/renueva la suscripción por 30 días.
 
 ## Estructura
 
