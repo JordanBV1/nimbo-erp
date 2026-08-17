@@ -17,6 +17,20 @@ export interface GmailApiConfig {
   refreshToken: string;
 }
 
+export interface EmailJsConfig {
+  serviceId: string;
+  templateId: string;
+  publicKey: string;
+}
+
+export function getEmailJsConfig(): EmailJsConfig | null {
+  const serviceId = process.env.EMAILJS_SERVICE_ID;
+  const templateId = process.env.EMAILJS_TEMPLATE_ID;
+  const publicKey = process.env.EMAILJS_PUBLIC_KEY;
+  if (!serviceId || !templateId || !publicKey) return null;
+  return { serviceId, templateId, publicKey };
+}
+
 export function getMailerConfig(): MailerConfig | null {
   const host = process.env.SMTP_HOST;
   if (!host) return null;
@@ -39,10 +53,11 @@ export function getGmailApiConfig(): GmailApiConfig | null {
   return { user, clientId, clientSecret, refreshToken };
 }
 
-export type MailMethod = "gmail-api" | "smtp" | "none";
+export type MailMethod = "gmail-api" | "emailjs" | "smtp" | "none";
 
 export function getMailMethod(): MailMethod {
   if (getGmailApiConfig()) return "gmail-api";
+  if (getEmailJsConfig()) return "emailjs";
   if (getMailerConfig()) return "smtp";
   return "none";
 }
@@ -106,6 +121,31 @@ export async function sendGmailApiMail(cfg: GmailApiConfig, to: string, subject:
   }
 }
 
+export async function sendEmailJsMail(cfg: EmailJsConfig, to: string, subject: string, html: string): Promise<boolean> {
+  try {
+    const res = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        service_id: cfg.serviceId,
+        template_id: cfg.templateId,
+        user_id: cfg.publicKey,
+        template_params: { to_email: to, subject, message: html },
+      }),
+    });
+    if (!res.ok) {
+      const detail = await res.text();
+      logger.error({ to, subject, status: res.status, detail }, "EmailJS send failed");
+      return false;
+    }
+    logger.info({ to, subject }, "Email sent via EmailJS");
+    return true;
+  } catch (err) {
+    logger.error({ err, to, subject }, "EmailJS send error");
+    return false;
+  }
+}
+
 let transporter: nodemailer.Transporter | null = null;
 
 function getTransporter(): nodemailer.Transporter | null {
@@ -131,10 +171,14 @@ export async function sendMail(to: string, subject: string, html: string): Promi
   if (gmailCfg) {
     return sendGmailApiMail(gmailCfg, to, subject, html);
   }
+  const emailJsCfg = getEmailJsConfig();
+  if (emailJsCfg) {
+    return sendEmailJsMail(emailJsCfg, to, subject, html);
+  }
   const cfg = getMailerConfig();
   const t = getTransporter();
   if (!cfg || !t) {
-    logger.warn({ to, subject }, "Email transport not configured — email not sent. Set GMAIL_* or SMTP_* env vars to enable.");
+    logger.warn({ to, subject }, "Email transport not configured — email not sent. Set GMAIL_*, EMAILJS_* or SMTP_* env vars to enable.");
     return false;
   }
   try {
@@ -163,9 +207,13 @@ export async function probeMail(): Promise<{
       return { method: "gmail-api", configured: true, ok: false, error: e?.message || String(e) };
     }
   }
+  const emailJsCfg = getEmailJsConfig();
+  if (emailJsCfg) {
+    return { method: "emailjs", configured: true, ok: true };
+  }
   const cfg = getMailerConfig();
   if (!cfg) {
-    return { method: "none", configured: false, ok: false, error: "No GMAIL_* ni SMTP_* configurado" };
+    return { method: "none", configured: false, ok: false, error: "No hay GMAIL_*, EMAILJS_* ni SMTP_* configurado" };
   }
   try {
     const t = nodemailer.createTransport({
