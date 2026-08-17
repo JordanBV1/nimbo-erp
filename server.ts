@@ -123,7 +123,10 @@ function requireSubscription(req: express.Request, res: express.Response, next: 
         logger.error({ err: e }, "requireSubscription failed");
       });
     }
-    return res.status(402).json({ error: notActive ? "Tu suscripción está inactiva. Activa tu plan para continuar." : "Suscripción vencida. Renueva tu plan para continuar." });
+    const msg = pastDue || req.org.subscriptionStatus === "expired"
+      ? "Suscripción vencida. Renueva tu plan para continuar."
+      : "Tu suscripción está inactiva. Activa tu plan para continuar.";
+    return res.status(402).json({ error: msg });
   }
   next();
 }
