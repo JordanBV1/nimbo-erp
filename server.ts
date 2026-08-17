@@ -212,12 +212,12 @@ const saleSchema = z.object({
   customerId: z.string().optional(),
   items: z.array(z.object({
     productId: z.string().min(1),
-    variantId: z.string().optional(),
+    variantId: z.string().nullable().optional(),
     quantity: z.number().positive(),
-    priceCUP: z.number().optional(),
-    priceUSD: z.number().optional(),
-    tax: z.number().optional(),
-    discount: z.number().optional(),
+    priceCUP: z.number().nullable().optional(),
+    priceUSD: z.number().nullable().optional(),
+    tax: z.number().nullable().optional(),
+    discount: z.number().nullable().optional(),
   })).min(1, "Debe haber al menos un producto"),
   totalCUP: z.number().optional(),
   totalUSD: z.number().optional(),
@@ -231,6 +231,7 @@ const saleSchema = z.object({
   userId: z.string().optional(),
   isCredit: z.boolean().optional(),
   loyaltyPointsRedeemed: z.number().optional(),
+  reference: z.string().optional(),
 });
 
 export const app = express();
@@ -1187,7 +1188,7 @@ async function registerAppInternal(): Promise<express.Express> {
     const {
       branchId, customerId, items, totalCUP, totalUSD,
       taxTotalCUP, taxTotalUSD, discount, grandTotalCUP, grandTotalUSD,
-      paymentMethod, payments, userId, isCredit, loyaltyPointsRedeemed,
+      paymentMethod, payments, userId, isCredit, loyaltyPointsRedeemed, reference,
     } = parsed.data;
 
     if (!(await isBranchInOrg(branchId, req.orgId!))) {
@@ -1260,7 +1261,7 @@ async function registerAppInternal(): Promise<express.Express> {
         method: paymentMethod || "efectivo",
         currency: (grandTotalUSD || 0) > 0 ? Currency.USD : Currency.CUP,
         amount: (grandTotalUSD || 0) > 0 ? (grandTotalUSD || 0) : (grandTotalCUP || 0),
-        reference: paymentMethod !== "efectivo" ? `REF-${Math.floor(Math.random() * 900000) + 100000}` : undefined,
+        reference: reference || (paymentMethod !== "efectivo" ? `REF-${Math.floor(Math.random() * 900000) + 100000}` : undefined),
       });
     }
 
@@ -1301,6 +1302,10 @@ async function registerAppInternal(): Promise<express.Express> {
     const { userId } = req.body;
     const sale = await db.sales.findById(id);
     if (!sale) return res.status(404).json({ error: "Venta no encontrada" });
+    const saleOrgBranches = (await db.branches.findMany()).filter((b: any) => b.organizationId === req.orgId!);
+    if (!saleOrgBranches.some((b: any) => b.id === sale.branchId)) {
+      return res.status(403).json({ error: "No tienes permisos para esta venta" });
+    }
 
     await db.sales.update(id, { status: "refunded" });
 
@@ -1385,9 +1390,15 @@ async function registerAppInternal(): Promise<express.Express> {
   app.put("/api/orders/:id/status", authSub, async (req, res) => {
     const { id } = req.params;
     const { status, assignedDriverId } = req.body;
-    const order = await db.orders.update(id, { status, assignedDriverId });
+    const order = await db.orders.findById(id);
+    if (!order) return res.status(404).json({ error: "Pedido no encontrado" });
+    const orderOrgBranches = (await db.branches.findMany()).filter((b: any) => b.organizationId === req.orgId!);
+    if (!orderOrgBranches.some((b: any) => b.id === order.branchId)) {
+      return res.status(403).json({ error: "No tienes permisos para este pedido" });
+    }
+    const updatedOrder = await db.orders.update(id, { status, assignedDriverId });
     logAudit(req.body.userId || req.user!.userId, "UPDATE_ORDER_STATUS", "Order", id, `Status changed to ${status}`);
-    return res.json(order);
+    return res.json(updatedOrder);
   });
 
   // --- Purchases ---
@@ -1754,7 +1765,7 @@ app.post("/api/rrhh/employees", authSub, async (req, res) => {
     const orgBranches = (await db.branches.findMany()).filter((b: any) => b.organizationId === req.orgId!);
     const orgBranchIds = new Set(orgBranches.map((b: any) => b.id));
     const allUsers = (await db.users.findMany()).filter((u: any) => orgBranchIds.has(u.branchId));
-    const branches = await db.branches.findMany();
+    const branches = orgBranches;
 
     let filtered = allUsers;
     if (req.user!.role !== Role.ADMIN && req.user!.role !== Role.SUPER_ADMIN) {
@@ -1939,7 +1950,9 @@ app.post("/api/rrhh/employees", authSub, async (req, res) => {
 
     const sales = await db.sales.findManyByOrg(req.orgId!);
     const inxs = await db.cashRegisterTransactions.findManyByOrg(req.orgId!);
-    const pDetails = await db.payrollDetails.findMany();
+    const orgEmployees = await db.employees.findManyByOrg(req.orgId!);
+    const orgEmployeeIds = new Set(orgEmployees.map((e: any) => e.id));
+    const pDetails = (await db.payrollDetails.findMany()).filter((d: any) => orgEmployeeIds.has(d.employeeId));
     const invoices = await db.supplierInvoices.findManyByOrg(req.orgId!);
 
     const reportLines: Array<{ fecha: string; concepto: string; ingreso: number; gasto: number }> = [];
@@ -1967,8 +1980,10 @@ app.post("/api/rrhh/employees", authSub, async (req, res) => {
       }
     });
 
-    const purchaseOrders = await db.purchaseOrders.findMany();
+    const purchaseOrders = await db.purchaseOrders.findManyByOrg(req.orgId!);
     const payrollPeriods = await db.payrollPeriods.findMany();
+    const orgPeriodIds = new Set(pDetails.map((d: any) => d.payrollPeriodId));
+    const orgPayrollPeriods = payrollPeriods.filter((p: any) => orgPeriodIds.has(p.id));
     for (const inv of invoices) {
       const po = inv.purchaseOrderId ? purchaseOrders.find((p) => p.id === inv.purchaseOrderId) : null;
       const refDate = po ? po.createdAt : new Date().toISOString();
@@ -1979,7 +1994,7 @@ app.post("/api/rrhh/employees", authSub, async (req, res) => {
     }
 
     for (const d of pDetails) {
-      const p = payrollPeriods.find((x) => x.id === d.payrollPeriodId);
+      const p = orgPayrollPeriods.find((x) => x.id === d.payrollPeriodId);
       if (p && isTargetMonth(p.startDate)) {
         reportLines.push({ fecha: p.startDate.substring(0, 10), concepto: `Gasto de Salarios - Empleado ID ${d.employeeId.substring(0, 6)}`, ingreso: 0, gasto: d.netPay });
       }

@@ -61,15 +61,15 @@ CREATE TABLE IF NOT EXISTS categories (
   organization_id TEXT REFERENCES organizations(id)
 );
 CREATE TABLE IF NOT EXISTS taxes (
-  id TEXT PRIMARY KEY, name TEXT NOT NULL, rate REAL DEFAULT 0, type TEXT,
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, rate DOUBLE PRECISION DEFAULT 0, type TEXT,
   organization_id TEXT REFERENCES organizations(id)
 );
 CREATE TABLE IF NOT EXISTS products (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, sku TEXT,
   barcode TEXT, unit_of_measure TEXT DEFAULT 'pieza',
   is_service INTEGER DEFAULT 0, category_id TEXT, tax_id TEXT,
-  price_cup REAL DEFAULT 0, price_usd REAL DEFAULT 0,
-  cost_cup REAL DEFAULT 0, cost_usd REAL DEFAULT 0,
+  price_cup DOUBLE PRECISION DEFAULT 0, price_usd DOUBLE PRECISION DEFAULT 0,
+  cost_cup DOUBLE PRECISION DEFAULT 0, cost_usd DOUBLE PRECISION DEFAULT 0,
   image_url TEXT,
   organization_id TEXT REFERENCES organizations(id),
   created_at TEXT DEFAULT ${TS_DEFAULT},
@@ -77,8 +77,8 @@ CREATE TABLE IF NOT EXISTS products (
 );
 CREATE TABLE IF NOT EXISTS variants (
   id TEXT PRIMARY KEY, product_id TEXT NOT NULL, name TEXT NOT NULL,
-  sku TEXT, barcode TEXT, price_cup REAL DEFAULT 0, price_usd REAL DEFAULT 0,
-  cost_cup REAL DEFAULT 0, cost_usd REAL DEFAULT 0, stock REAL DEFAULT 0,
+  sku TEXT, barcode TEXT, price_cup DOUBLE PRECISION DEFAULT 0, price_usd DOUBLE PRECISION DEFAULT 0,
+  cost_cup DOUBLE PRECISION DEFAULT 0, cost_usd DOUBLE PRECISION DEFAULT 0, stock DOUBLE PRECISION DEFAULT 0,
   organization_id TEXT REFERENCES organizations(id)
 );
 CREATE TABLE IF NOT EXISTS warehouses (
@@ -87,14 +87,14 @@ CREATE TABLE IF NOT EXISTS warehouses (
 );
 CREATE TABLE IF NOT EXISTS stocks (
   id TEXT PRIMARY KEY, product_id TEXT NOT NULL, variant_id TEXT,
-  warehouse_id TEXT NOT NULL, quantity REAL DEFAULT 0,
-  min_stock REAL DEFAULT 5, max_stock REAL DEFAULT 9999,
+  warehouse_id TEXT NOT NULL, quantity DOUBLE PRECISION DEFAULT 0,
+  min_stock DOUBLE PRECISION DEFAULT 5, max_stock DOUBLE PRECISION DEFAULT 9999,
   lot_number TEXT, expiration_date TEXT,
   organization_id TEXT REFERENCES organizations(id)
 );
 CREATE TABLE IF NOT EXISTS stock_movements (
   id TEXT PRIMARY KEY, stock_id TEXT NOT NULL, type TEXT NOT NULL,
-  quantity REAL DEFAULT 0, reason TEXT, user_id TEXT,
+  quantity DOUBLE PRECISION DEFAULT 0, reason TEXT, user_id TEXT,
   organization_id TEXT REFERENCES organizations(id),
   created_at TEXT DEFAULT ${TS_DEFAULT}
 );
@@ -120,28 +120,28 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
 CREATE TABLE IF NOT EXISTS purchase_order_items (
   id TEXT PRIMARY KEY, purchase_order_id TEXT NOT NULL,
   product_id TEXT NOT NULL, variant_id TEXT,
-  quantity REAL DEFAULT 0, unit_cost_cup REAL DEFAULT 0,
-  unit_cost_usd REAL DEFAULT 0, received_qty REAL DEFAULT 0
+  quantity DOUBLE PRECISION DEFAULT 0, unit_cost_cup DOUBLE PRECISION DEFAULT 0,
+  unit_cost_usd DOUBLE PRECISION DEFAULT 0, received_qty DOUBLE PRECISION DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS supplier_invoices (
   id TEXT PRIMARY KEY, supplier_id TEXT NOT NULL, purchase_order_id TEXT,
-  total_cup REAL DEFAULT 0, total_usd REAL DEFAULT 0, due_date TEXT,
-  paid_amount_cup REAL DEFAULT 0, paid_amount_usd REAL DEFAULT 0,
+  total_cup DOUBLE PRECISION DEFAULT 0, total_usd DOUBLE PRECISION DEFAULT 0, due_date TEXT,
+  paid_amount_cup DOUBLE PRECISION DEFAULT 0, paid_amount_usd DOUBLE PRECISION DEFAULT 0,
   status TEXT DEFAULT 'pendiente',
   organization_id TEXT REFERENCES organizations(id)
 );
 CREATE TABLE IF NOT EXISTS customers (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT, phone TEXT,
-  address TEXT, tax_id TEXT, credit_limit REAL DEFAULT 0,
-  current_balance REAL DEFAULT 0, loyalty_points REAL DEFAULT 0,
+  address TEXT, tax_id TEXT, credit_limit DOUBLE PRECISION DEFAULT 0,
+  current_balance DOUBLE PRECISION DEFAULT 0, loyalty_points DOUBLE PRECISION DEFAULT 0,
   organization_id TEXT REFERENCES organizations(id)
 );
 CREATE TABLE IF NOT EXISTS sales (
   id TEXT PRIMARY KEY, branch_id TEXT NOT NULL, customer_id TEXT,
-  date TEXT, total_cup REAL DEFAULT 0, total_usd REAL DEFAULT 0,
-  tax_total_cup REAL DEFAULT 0, tax_total_usd REAL DEFAULT 0,
-  discount REAL DEFAULT 0, grand_total_cup REAL DEFAULT 0,
-  grand_total_usd REAL DEFAULT 0, payment_method TEXT,
+  date TEXT, total_cup DOUBLE PRECISION DEFAULT 0, total_usd DOUBLE PRECISION DEFAULT 0,
+  tax_total_cup DOUBLE PRECISION DEFAULT 0, tax_total_usd DOUBLE PRECISION DEFAULT 0,
+  discount DOUBLE PRECISION DEFAULT 0, grand_total_cup DOUBLE PRECISION DEFAULT 0,
+  grand_total_usd DOUBLE PRECISION DEFAULT 0, payment_method TEXT,
   status TEXT DEFAULT 'completed', user_id TEXT,
   organization_id TEXT REFERENCES organizations(id),
   created_at TEXT DEFAULT ${TS_DEFAULT},
@@ -149,46 +149,46 @@ CREATE TABLE IF NOT EXISTS sales (
 );
 CREATE TABLE IF NOT EXISTS sale_items (
   id TEXT PRIMARY KEY, sale_id TEXT NOT NULL, product_id TEXT NOT NULL,
-  variant_id TEXT, quantity REAL DEFAULT 0, unit_price_cup REAL DEFAULT 0,
-  unit_price_usd REAL DEFAULT 0, tax REAL DEFAULT 0, discount REAL DEFAULT 0
+  variant_id TEXT, quantity DOUBLE PRECISION DEFAULT 0, unit_price_cup DOUBLE PRECISION DEFAULT 0,
+  unit_price_usd DOUBLE PRECISION DEFAULT 0, tax DOUBLE PRECISION DEFAULT 0, discount DOUBLE PRECISION DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS payments (
   id TEXT PRIMARY KEY, sale_id TEXT NOT NULL, method TEXT NOT NULL,
-  currency TEXT DEFAULT 'CUP', amount REAL DEFAULT 0, reference TEXT,
+  currency TEXT DEFAULT 'CUP', amount DOUBLE PRECISION DEFAULT 0, reference TEXT,
   created_at TEXT DEFAULT ${TS_DEFAULT}
 );
 CREATE TABLE IF NOT EXISTS cash_register_sessions (
   id TEXT PRIMARY KEY, branch_id TEXT NOT NULL, user_id TEXT,
-  start_date TEXT, end_date TEXT, initial_cash REAL DEFAULT 0,
-  expected_cash REAL, counted_cash REAL, status TEXT DEFAULT 'open',
+  start_date TEXT, end_date TEXT, initial_cash DOUBLE PRECISION DEFAULT 0,
+  expected_cash DOUBLE PRECISION, counted_cash DOUBLE PRECISION, status TEXT DEFAULT 'open',
   organization_id TEXT REFERENCES organizations(id)
 );
 CREATE TABLE IF NOT EXISTS orders (
   id TEXT PRIMARY KEY, branch_id TEXT NOT NULL, customer_id TEXT,
   order_date TEXT, delivery_date TEXT, status TEXT DEFAULT 'pending',
-  total_cup REAL DEFAULT 0, total_usd REAL DEFAULT 0,
+  total_cup DOUBLE PRECISION DEFAULT 0, total_usd DOUBLE PRECISION DEFAULT 0,
   notes TEXT, delivery_address TEXT, assigned_driver_id TEXT,
-  advance_payment REAL DEFAULT 0,
+  advance_payment DOUBLE PRECISION DEFAULT 0,
   organization_id TEXT REFERENCES organizations(id)
 );
 CREATE TABLE IF NOT EXISTS order_items (
   id TEXT PRIMARY KEY, order_id TEXT NOT NULL, product_id TEXT NOT NULL,
-  variant_id TEXT, quantity REAL DEFAULT 0,
-  unit_price_cup REAL DEFAULT 0, unit_price_usd REAL DEFAULT 0
+  variant_id TEXT, quantity DOUBLE PRECISION DEFAULT 0,
+  unit_price_cup DOUBLE PRECISION DEFAULT 0, unit_price_usd DOUBLE PRECISION DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS recipes (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, product_id TEXT NOT NULL,
-  yield_quantity REAL DEFAULT 1, yield_unit TEXT DEFAULT 'pieza',
+  yield_quantity DOUBLE PRECISION DEFAULT 1, yield_unit TEXT DEFAULT 'pieza',
   organization_id TEXT REFERENCES organizations(id)
 );
 CREATE TABLE IF NOT EXISTS recipe_ingredients (
   id TEXT PRIMARY KEY, recipe_id TEXT NOT NULL,
-  ingredient_product_id TEXT NOT NULL, quantity REAL DEFAULT 0,
-  unit TEXT DEFAULT 'kg', waste_percent REAL DEFAULT 0
+  ingredient_product_id TEXT NOT NULL, quantity DOUBLE PRECISION DEFAULT 0,
+  unit TEXT DEFAULT 'kg', waste_percent DOUBLE PRECISION DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS production_orders (
   id TEXT PRIMARY KEY, product_id TEXT NOT NULL, recipe_id TEXT,
-  planned_quantity REAL DEFAULT 0, produced_quantity REAL DEFAULT 0,
+  planned_quantity DOUBLE PRECISION DEFAULT 0, produced_quantity DOUBLE PRECISION DEFAULT 0,
   status TEXT DEFAULT 'planned', start_date TEXT, end_date TEXT,
   warehouse_id TEXT, notes TEXT,
   organization_id TEXT REFERENCES organizations(id)
@@ -204,24 +204,24 @@ CREATE TABLE IF NOT EXISTS journal_entries (
 );
 CREATE TABLE IF NOT EXISTS journal_entry_lines (
   id TEXT PRIMARY KEY, journal_entry_id TEXT NOT NULL,
-  account_id TEXT NOT NULL, debit REAL DEFAULT 0, credit REAL DEFAULT 0
+  account_id TEXT NOT NULL, debit DOUBLE PRECISION DEFAULT 0, credit DOUBLE PRECISION DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS cash_register_transactions (
-  id TEXT PRIMARY KEY, type TEXT NOT NULL, amount REAL DEFAULT 0,
+  id TEXT PRIMARY KEY, type TEXT NOT NULL, amount DOUBLE PRECISION DEFAULT 0,
   currency TEXT DEFAULT 'CUP', description TEXT, category TEXT,
   date TEXT DEFAULT ${TS_DEFAULT}, user_id TEXT,
   organization_id TEXT REFERENCES organizations(id)
 );
 CREATE TABLE IF NOT EXISTS employees (
   id TEXT PRIMARY KEY, first_name TEXT NOT NULL, last_name TEXT NOT NULL,
-  hire_date TEXT, base_salary REAL DEFAULT 0,
+  hire_date TEXT, base_salary DOUBLE PRECISION DEFAULT 0,
   payment_type TEXT DEFAULT 'salary', bank_account TEXT,
-  tax_id TEXT, social_security_number TEXT, vacation_days REAL DEFAULT 24,
+  tax_id TEXT, social_security_number TEXT, vacation_days DOUBLE PRECISION DEFAULT 24,
   organization_id TEXT REFERENCES organizations(id)
 );
 CREATE TABLE IF NOT EXISTS attendances (
   id TEXT PRIMARY KEY, employee_id TEXT NOT NULL, date TEXT,
-  check_in TEXT, check_out TEXT, hours_worked REAL,
+  check_in TEXT, check_out TEXT, hours_worked DOUBLE PRECISION,
   organization_id TEXT REFERENCES organizations(id)
 );
 CREATE TABLE IF NOT EXISTS payroll_periods (
@@ -231,9 +231,9 @@ CREATE TABLE IF NOT EXISTS payroll_periods (
 );
 CREATE TABLE IF NOT EXISTS payroll_details (
   id TEXT PRIMARY KEY, payroll_period_id TEXT NOT NULL,
-  employee_id TEXT NOT NULL, base_amount REAL DEFAULT 0,
-  overtime REAL DEFAULT 0, bonuses REAL DEFAULT 0,
-  deductions REAL DEFAULT 0, net_pay REAL DEFAULT 0
+  employee_id TEXT NOT NULL, base_amount DOUBLE PRECISION DEFAULT 0,
+  overtime DOUBLE PRECISION DEFAULT 0, bonuses DOUBLE PRECISION DEFAULT 0,
+  deductions DOUBLE PRECISION DEFAULT 0, net_pay DOUBLE PRECISION DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS audit_logs (
   id TEXT PRIMARY KEY, user_id TEXT NOT NULL, action TEXT NOT NULL,
@@ -245,7 +245,7 @@ CREATE TABLE IF NOT EXISTS system_settings (
 );
 CREATE TABLE IF NOT EXISTS subscription_payments (
   id TEXT PRIMARY KEY, organization_id TEXT NOT NULL,
-  amount REAL DEFAULT 0, currency TEXT DEFAULT 'CUP',
+  amount DOUBLE PRECISION DEFAULT 0, currency TEXT DEFAULT 'CUP',
   platform TEXT, phone TEXT, transaction_id TEXT,
   status TEXT DEFAULT 'pending', date TEXT DEFAULT ${TS_DEFAULT}
 );
@@ -455,7 +455,7 @@ export const pgDb = {
         vals.push(v);
       }
       vals.push(id);
-      await pgRun(`UPDATE organizations SET ${sets.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, vals);
+      await pgRun(`UPDATE organizations SET ${sets.join(", ")}, updated_at = to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') WHERE id = ?`, vals);
       return pgDb.organizations.findById(id);
     },
   },
@@ -476,7 +476,7 @@ export const pgDb = {
         vals.push(v);
       }
       vals.push(id);
-      await pgRun(`UPDATE branches SET ${sets.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, vals);
+      await pgRun(`UPDATE branches SET ${sets.join(", ")}, updated_at = to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') WHERE id = ?`, vals);
       return pgDb.branches.findById(id);
     },
   },
@@ -498,7 +498,7 @@ export const pgDb = {
         vals.push(v);
       }
       vals.push(id);
-      await pgRun(`UPDATE users SET ${sets.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, vals);
+      await pgRun(`UPDATE users SET ${sets.join(", ")}, updated_at = to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') WHERE id = ?`, vals);
       return pgDb.users.findById(id);
     },
     delete: async (id: string) => { await pgRun("DELETE FROM users WHERE id = ?", [id]); return true; },
@@ -540,7 +540,7 @@ export const pgDb = {
         else { sets.push(`${toSnake(k)} = ?`); vals.push(v); }
       }
       vals.push(id);
-      await pgRun(`UPDATE products SET ${sets.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, vals);
+      await pgRun(`UPDATE products SET ${sets.join(", ")}, updated_at = to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') WHERE id = ?`, vals);
       return pgDb.products.findById(id);
     },
     delete: async (id: string) => { await pgRun("DELETE FROM products WHERE id = ?", [id]); return true; },
@@ -664,7 +664,7 @@ export const pgDb = {
         sets.push(`${toSnake(k)} = ?`); vals.push(v);
       }
       vals.push(id);
-      await pgRun(`UPDATE purchase_orders SET ${sets.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, vals);
+      await pgRun(`UPDATE purchase_orders SET ${sets.join(", ")}, updated_at = to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') WHERE id = ?`, vals);
       return { id, ...data };
     },
   },
@@ -742,7 +742,7 @@ export const pgDb = {
         sets.push(`${toSnake(k)} = ?`); vals.push(v);
       }
       vals.push(id);
-      await pgRun(`UPDATE sales SET ${sets.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, vals);
+      await pgRun(`UPDATE sales SET ${sets.join(", ")}, updated_at = to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') WHERE id = ?`, vals);
       return pgDb.sales.findById(id);
     },
   },

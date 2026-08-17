@@ -149,6 +149,9 @@ export default function App() {
   const [branches, setBranches] = useState<any[]>([]);
   const [transfermovilPhone, setTransfermovilPhone] = useState<string>("+53 51234567");
   const [enzonaUser, setEnzonaUser] = useState<string>("nimbo.erp");
+  const [transfermovilCardCUP, setTransfermovilCardCUP] = useState<string>("9225 1234 5678 9012");
+  const [transfermovilCardUSD, setTransfermovilCardUSD] = useState<string>("9205 9876 5432 1098");
+  const [transfermovilMerchantId, setTransfermovilMerchantId] = useState<string>("482019");
   const [pricing, setPricing] = useState<{ basePrice: number; perBranchPrice: number; branchCount: number; totalPrice: number; currency: string }>({
     basePrice: 5000,
     perBranchPrice: 1000,
@@ -169,7 +172,6 @@ export default function App() {
 
   // Transfermovil QR Modal state
   const [posQRModalOpen, setPosQRModalOpen] = useState<boolean>(false);
-  const [posQRPendingRef, setPosQRPendingRef] = useState<string>("");
 
   // Form toggles and temporary edit states
   const [showProductForm, setShowProductForm] = useState<boolean>(false);
@@ -284,6 +286,12 @@ export default function App() {
         if (phoneSetting) setTransfermovilPhone(phoneSetting.value);
         const enzonaSetting = confData.settings.find((s: any) => s.key === "enzona_user");
         if (enzonaSetting) setEnzonaUser(enzonaSetting.value);
+        const cardCUPSetting = confData.settings.find((s: any) => s.key === "transfermovil_card_cup");
+        if (cardCUPSetting) setTransfermovilCardCUP(cardCUPSetting.value);
+        const cardUSDSettings = confData.settings.find((s: any) => s.key === "transfermovil_card_usd");
+        if (cardUSDSettings) setTransfermovilCardUSD(cardUSDSettings.value);
+        const merchantSetting = confData.settings.find((s: any) => s.key === "transfermovil_merchant_id");
+        if (merchantSetting) setTransfermovilMerchantId(merchantSetting.value);
         if (!onboardingCheckedRef.current) {
           onboardingCheckedRef.current = true;
           const onboardingSetting = confData.settings.find((s: any) => s.key === "onboarding_done");
@@ -302,7 +310,7 @@ export default function App() {
       }
 
       // Refresh organization subscription status
-      const savedOrg = localStorage.getItem("nimbo_org");
+      const savedOrg = sessionStorage.getItem("nimbo_org");
       if (savedOrg) {
         const parsedOrg = JSON.parse(savedOrg);
         if (parsedOrg && parsedOrg.id) {
@@ -310,7 +318,7 @@ export default function App() {
           if (resOrg.ok) {
             const freshOrg = await resOrg.json();
             setOrg(freshOrg);
-            localStorage.setItem("nimbo_org", JSON.stringify(freshOrg));
+            sessionStorage.setItem("nimbo_org", JSON.stringify(freshOrg));
           }
           await fetchSubscriptionPayments(parsedOrg.id);
           // Load branches for subscription pricing
@@ -641,7 +649,7 @@ export default function App() {
     }
   };
 
-  const handleCheckout = async () => {
+  const handleCheckout = async (qrRef?: string) => {
     if (posCart.length === 0) {
       triggerToast("El carrito está vacío", "error");
       return;
@@ -673,7 +681,8 @@ export default function App() {
       grandTotalUSD: finalUSD,
       paymentMethod: posPaymentMethod,
       userId: user.id,
-      isCredit: posPaymentMethod === "credito"
+      isCredit: posPaymentMethod === "credito",
+      reference: qrRef || undefined
     };
 
     // Client connection check
@@ -1958,12 +1967,15 @@ export default function App() {
                         isOpen={posQRModalOpen}
                         onClose={() => setPosQRModalOpen(false)}
                         onConfirmPayment={(ref) => {
-                          setPosQRPendingRef(ref);
                           setPosQRModalOpen(false);
-                          handleCheckout();
+                          handleCheckout(ref);
                         }}
-                        amount={Math.max(0, posCart.reduce((sum: number, item: any) => sum + (posCurrencyChoice === Currency.USD ? item.priceUSD * item.quantity : item.priceCUP * item.quantity), 0) - Number(posDiscount || 0))}
+                        amount={Math.max(0, posCart.reduce((sum: number, item: any) => sum + (posCurrencyChoice === Currency.USD ? item.priceUSD * item.quantity : item.priceCUP * item.quantity), 0) - (posCurrencyChoice === Currency.USD ? Number(posDiscount || 0) / exchangeRate : Number(posDiscount || 0)))}
                         currency={posCurrencyChoice}
+                        cardCUP={transfermovilCardCUP}
+                        cardUSD={transfermovilCardUSD}
+                        phone={transfermovilPhone}
+                        merchantId={transfermovilMerchantId}
                       />
                     </div>
                   </div>
@@ -2348,25 +2360,40 @@ export default function App() {
                 </div>
 
                 <button
-                  onClick={() => {
-                    const client = prompt("Ingresa Nombre del Cliente:");
-                    const address = prompt("Dirección de Entrega:");
-                    if (client) {
-                      // Create sample order
-                      fetch("/api/orders", {
+                  onClick={async () => {
+                    const clientName = prompt("Ingresa Nombre del Cliente:");
+                    if (!clientName) return;
+                    const address = prompt("Dirección de Entrega:") || "";
+                    let customerId: string | null = null;
+                    const existing = customers.find((c) => c.name.toLowerCase() === clientName.trim().toLowerCase());
+                    if (existing) {
+                      customerId = existing.id;
+                    } else {
+                      try {
+                        const res = await fetch("/api/clientes", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ name: clientName.trim(), address })
+                        });
+                        if (res.ok) customerId = (await res.json()).id;
+                      } catch { /* ignore */ }
+                    }
+                    try {
+                      await fetch("/api/orders", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
                           branchId: branch.id,
-                          customerId: customers[0]?.id || null,
-                          totalCUP: 1500,
-                          totalUSD: 12.5,
-                          notes: "Pedido rápido desde panel",
-                          deliveryAddress: address || "La Habana",
-                          advancePayment: 500
+                          customerId: customerId || undefined,
+                          totalCUP: 0,
+                          totalUSD: 0,
+                          notes: `Pedido de ${clientName.trim()}`,
+                          deliveryAddress: address,
+                          advancePayment: 0
                         })
-                      }).then(() => loadAllData());
-                    }
+                      });
+                      loadAllData();
+                    } catch { /* ignore */ }
                   }}
                   className="bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl py-2 px-4 text-xs transition-all flex items-center cursor-pointer"
                 >
@@ -3141,13 +3168,14 @@ export default function App() {
               <div>
                 <h2 className="text-xl font-bold text-white tracking-tight flex items-center font-display">
                   <Settings className="h-6 w-6 text-blue-400 mr-2" />
-                  Ajustes del Sistema y Tasa Cambiaria
+                  Configuración
                 </h2>
                 <p className="text-xs text-slate-400 mt-1">
-                  Establece la tasa histórica de USD para unificación CUP, consulta logs de auditoría física o cambia roles.
+                  Gestiona usuarios y roles, exporta tus datos y (solo administración) ajusta parámetros globales.
                 </p>
               </div>
 
+              {user?.role === Role.SUPER_ADMIN && (
               <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
                 {/* Configuration form */}
                 <div className="md:col-span-4 bg-[#121214] border border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
@@ -3205,14 +3233,15 @@ export default function App() {
                   </div>
                 </div>
               </div>
+            )}
 
               {/* Transfermovil Settings (solo SUPER_ADMIN) */}
               {user?.role === Role.SUPER_ADMIN && (
                 <TransfermovilSettings
-                  cardCUP="9225 1234 5678 9012"
-                  cardUSD="9205 9876 5432 1098"
-                  phone="+53 52987654"
-                  merchantId="482019"
+                  cardCUP={transfermovilCardCUP}
+                  cardUSD={transfermovilCardUSD}
+                  phone={transfermovilPhone}
+                  merchantId={transfermovilMerchantId}
                   triggerToast={triggerToast}
                   onRefreshData={loadAllData}
                   userId={user.id}
@@ -3261,8 +3290,10 @@ export default function App() {
 
   // Helper inside loop for totals
   function statsSalesSumCUP(): number {
+    const sessionStart = cashSession?.startDate ? new Date(cashSession.startDate).getTime() : 0;
+    const rate = Number(exchangeRate) || 120;
     return sales
-      .filter((s) => s.userId === user.id && s.status === "completed")
-      .reduce((sum, s) => sum + s.grandTotalCUP, 0);
+      .filter((s) => s.userId === user.id && s.status === "completed" && new Date(s.date).getTime() >= sessionStart)
+      .reduce((sum, s) => sum + (Number(s.grandTotalCUP) || 0) + (Number(s.grandTotalUSD) || 0) * rate, 0);
   }
 }

@@ -7,8 +7,9 @@ export function getPool(): pg.Pool {
     _pool = new pg.Pool({
       connectionString: process.env.DATABASE_URL,
       ssl: { rejectUnauthorized: false },
-      max: 5,
+      max: 10,
       idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000,
     });
   }
   return _pool;
@@ -17,10 +18,29 @@ export function getPool(): pg.Pool {
 // Convert sqlite-style ? placeholders to postgres $1..$n
 export function toPgSql(sql: string): string {
   let idx = 0;
-  return sql.replace(/\?/g, () => {
-    idx += 1;
-    return `$${idx}`;
-  }).replace(/datetime\('now'\)/g, "CURRENT_TIMESTAMP")
+  let out = "";
+  let inStr = false;
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i];
+    if (ch === "'") {
+      if (inStr && sql[i + 1] === "'") {
+        out += "''";
+        i += 1;
+        continue;
+      }
+      inStr = !inStr;
+      out += ch;
+      continue;
+    }
+    if (!inStr && ch === "?") {
+      idx += 1;
+      out += `$${idx}`;
+      continue;
+    }
+    out += ch;
+  }
+  return out
+    .replace(/datetime\('now'\)/g, "CURRENT_TIMESTAMP")
     .replace(/strftime\('%Y-%m-%dT%H:%M:%fZ','now'\)/g, "to_char(now() at time zone 'utc', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')");
 }
 

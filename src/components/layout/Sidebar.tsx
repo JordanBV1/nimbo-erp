@@ -61,7 +61,7 @@ export default function Sidebar({ currentModule, onSelectModule, businessType, u
   const navItems = allNavItems.filter((item) => {
     if (item.id === "dashboard") return true; // Dashboard is always visible
     if (item.id === "suscripcion") return true; // Subscription is always visible
-    if (item.id === "configuracion") return userRole === Role.SUPER_ADMIN; // Only superadmin sees config
+    if (item.id === "configuracion") return userRole === Role.SUPER_ADMIN || userRole === Role.ADMIN; // Superadmin + admin see config
     return allowedModules.includes(item.id);
   });
 
