@@ -439,6 +439,9 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         setAuthInfo(data.message || "Si el correo existe, recibirás un enlace.");
+        if (data.resetUrl) {
+          setAuthInfo(`${data.message} Enlace de recuperación (válido 1 hora): ${data.resetUrl}`);
+        }
       } else {
         const err = await res.json();
         setAuthError(err.error || "Error al solicitar el restablecimiento");

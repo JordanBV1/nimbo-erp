@@ -503,7 +503,8 @@ async function registerAppInternal(): Promise<express.Express> {
       success: true,
       message: sent
         ? "Revisa tu correo para restablecer tu contraseña."
-        : "Revisa tu correo. (Correo no enviado: SMTP no configurado en el servidor)",
+        : "No pudimos enviar el correo. Usa el enlace de recuperación que se muestra abajo o contacta a soporte por WhatsApp.",
+      resetUrl: sent ? undefined : resetUrl,
     });
   });
 
