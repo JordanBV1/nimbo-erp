@@ -3,6 +3,11 @@ import { Role, BusinessType } from "../types.js";
 import { logger } from "../logger.js";
 import { getPool, pgQuery, pgRun, pgGet, pgCount } from "./pg.js";
 
+function getTrialDays(): number {
+  const n = parseInt(process.env.TRIAL_DAYS || "7", 10);
+  return Number.isFinite(n) && n > 0 ? n : 7;
+}
+
 function generateId(): string {
   return "id_" + Math.random().toString(36).substr(2, 9) + "_" + Date.now();
 }
@@ -438,7 +443,7 @@ export const pgDb = {
       const id = generateId();
       const now = new Date().toISOString();
       const expires = new Date();
-      expires.setDate(expires.getDate() + 7);
+      expires.setDate(expires.getDate() + getTrialDays());
       await pgRun(`INSERT INTO organizations (id, name, subscription_status, subscription_expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`, [id, data.name, 'active', expires.toISOString(), now, now]);
       return { id, ...data, subscriptionStatus: 'active', subscriptionExpiresAt: expires.toISOString(), createdAt: now, updatedAt: now };
     },

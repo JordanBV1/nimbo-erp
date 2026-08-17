@@ -17,6 +17,7 @@ export default function PricingLanding({ pricing, onLogin, onRegister }: Pricing
   const base = Number(pricing?.basePrice ?? 5000);
   const perBranch = Number(pricing?.perBranchPrice ?? 1000);
   const phone = pricing?.transfermovilPhone || "+53 51234567";
+  const trialDays = Number(pricing?.trialDays ?? 7);
   const [legalDoc, setLegalDoc] = useState<LegalDoc | null>(null);
 
   return (
@@ -98,6 +99,10 @@ export default function PricingLanding({ pricing, onLogin, onRegister }: Pricing
           <span>Crear mi cuenta gratis</span>
           <ArrowRight className="h-4 w-4" />
         </button>
+
+        <p className="text-[10px] text-slate-400 text-center leading-relaxed">
+          Disfruta {trialDays} días de prueba gratuita al registrarte. Sin tarjeta, sin compromisos.
+        </p>
 
         <button
           onClick={onLogin}

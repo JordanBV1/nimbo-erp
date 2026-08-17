@@ -523,6 +523,7 @@ export default function App() {
 
   const isSubscriptionExpired = () => {
     if (!org) return false;
+    if (org.subscriptionStatus && org.subscriptionStatus !== "active") return true;
     if (org.subscriptionExpiresAt) {
       const expires = new Date(org.subscriptionExpiresAt);
       return new Date() > expires;

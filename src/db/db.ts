@@ -11,6 +11,11 @@ import { pgDb, initializeDatabasePg } from "./pg-db.js";
 
 export const USE_PG = !!process.env.DATABASE_URL;
 
+export function getTrialDays(): number {
+  const n = parseInt(process.env.TRIAL_DAYS || "7", 10);
+  return Number.isFinite(n) && n > 0 ? n : 7;
+}
+
 const DB_PATH = process.env.DB_PATH || path.join(process.cwd(), "db-data", "nimbo.db");
 
 let _sql: Database.Database;
@@ -534,7 +539,7 @@ const sqliteDb = {
       const id = generateId();
       const now = new Date().toISOString();
       const expires = new Date();
-      expires.setDate(expires.getDate() + 7);
+      expires.setDate(expires.getDate() + getTrialDays());
       getDb().prepare(`INSERT INTO organizations (id, name, subscription_status, subscription_expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`).run(id, data.name, 'active', expires.toISOString(), now, now);
       return { id, ...data, subscriptionStatus: 'active', subscriptionExpiresAt: expires.toISOString(), createdAt: now, updatedAt: now };
     },

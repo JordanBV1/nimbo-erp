@@ -14,7 +14,9 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: DATABASE_URL
-        value: "postgresql://postgres.zwkdshnezjipugrhktjq:fd31a6eb4ffa7b1011c3ca37eb04db42@aws-0-ca-central-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1"
+        sync: false
+      - key: TRIAL_DAYS
+        value: "7"
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT

@@ -13,11 +13,11 @@ import cors from "cors";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import { z } from "zod";
-import { db, initializeDatabase } from "./src/db/db.js";
+import { db, initializeDatabase, getTrialDays } from "./src/db/db.js";
 import { Role, BusinessType, Currency } from "./src/types.js";
 import { logger, httpLogger } from "./src/logger.js";
 import { scheduleBackup, createBackup } from "./src/db/backup.js";
-import { sendPasswordResetEmail, sendMail, sendSubscriptionReminderEmail, probeMail } from "./src/mailer.js";
+import { sendPasswordResetEmail, sendMail, sendSubscriptionReminderEmail } from "./src/mailer.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const JWT_SECRET = process.env.JWT_SECRET || (() => {
@@ -114,17 +114,16 @@ function requireSubscription(req: express.Request, res: express.Response, next: 
   if (!req.org) {
     return res.status(401).json({ error: "No autenticado" });
   }
-  if (req.org.subscriptionStatus === "expired") {
-    return res.status(402).json({ error: "Suscripción vencida. Renueva tu plan para continuar." });
-  }
-  if (req.org.subscriptionExpiresAt && new Date(req.org.subscriptionExpiresAt) < new Date()) {
-    db.organizations.update(req.org.id, { subscriptionStatus: "expired" }).then(() => {
-      res.status(402).json({ error: "Suscripción vencida. Renueva tu plan para continuar." });
-    }).catch((e: any) => {
-      logger.error({ err: e }, "requireSubscription failed");
-      res.status(500).json({ error: "Error interno del servidor" });
-    });
-    return;
+  const now = new Date();
+  const pastDue = !!req.org.subscriptionExpiresAt && new Date(req.org.subscriptionExpiresAt) < now;
+  const notActive = req.org.subscriptionStatus !== "active";
+  if (notActive || pastDue) {
+    if (pastDue && req.org.subscriptionStatus !== "expired") {
+      db.organizations.update(req.org.id, { subscriptionStatus: "expired" }).catch((e: any) => {
+        logger.error({ err: e }, "requireSubscription failed");
+      });
+    }
+    return res.status(402).json({ error: notActive ? "Tu suscripción está inactiva. Activa tu plan para continuar." : "Suscripción vencida. Renueva tu plan para continuar." });
   }
   next();
 }
@@ -337,15 +336,6 @@ async function registerAppInternal(): Promise<express.Express> {
     });
   });
 
-  app.post("/api/smtp/debug", authenticate, authorize(Role.SUPER_ADMIN), async (req, res) => {
-    const probe = await probeMail();
-    let sent = false;
-    if (probe.ok && req.user?.email) {
-      sent = await sendMail(req.user.email, "Prueba Nimbo ERP", "<p>Si recibes esto, el envío de email funciona.</p>");
-    }
-    return res.json({ ...probe, testEmailSent: sent });
-  });
-
   // --- Auth Routes ---
   app.post("/api/auth/login", async (req, res) => {
     const parsed = loginSchema.safeParse(req.body);
@@ -494,7 +484,7 @@ async function registerAppInternal(): Promise<express.Express> {
     const resetUrl = `${baseUrl}/reset-password?token=${token}`;
     const sent = await sendPasswordResetEmail(user.email, resetUrl);
     if (!sent) {
-      logger.warn({ resetUrl }, "Password reset link generated (SMTP not configured)");
+      logger.warn({ userId: user.id }, "Password reset link generated (email transport not configured)");
     } else {
       logger.info({ userId: user.id }, "Password reset email sent");
     }
@@ -684,6 +674,7 @@ async function registerAppInternal(): Promise<express.Express> {
       currency: "CUP",
       businessName: await db.systemSettings.getValue("business_name", "Nimbo ERP"),
       transfermovilPhone: await db.systemSettings.getValue("transfermovil_phone", "+53 51234567"),
+      trialDays: getTrialDays(),
     });
   });
 
@@ -2066,7 +2057,7 @@ export async function runSubscriptionReminders(): Promise<void> {
         await db.systemSettings.setValue(reminderKey, `${today}_${expires}`);
         logger.info({ orgId: org.id, daysLeft }, "Subscription reminder emails sent");
       } else {
-        logger.warn({ orgId: org.id }, "SMTP not configured — subscription reminder not sent");
+        logger.warn({ orgId: org.id }, "Email transport not configured — subscription reminder not sent");
       }
     }
   } catch (err) {

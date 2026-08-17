@@ -97,6 +97,7 @@ Ver `.env.example`. Todas son opcionales en desarrollo salvo `JWT_SECRET` en pro
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `SMTP_SECURE` | SMTP para emails | No (ver Email) |
 | `GMAIL_USER`, `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` | Gmail API por HTTPS (gratis, funciona en Render free) | No |
 | `EMAILJS_SERVICE_ID`, `EMAILJS_TEMPLATE_ID`, `EMAILJS_PUBLIC_KEY` | EmailJS (gratis, sin SMTP) | No |
+| `TRIAL_DAYS` | Días de prueba gratis para organizaciones nuevas (default `7`) | No |
 
 ### Email
 
@@ -112,21 +113,21 @@ Prioridad de transporte: `GMAIL_*` → `EMAILJS_*` → `SMTP_*`. En el plan free
 
 ## Credenciales demo
 
-La base de datos se siembra con usuarios de ejemplo (contraseña `123456`):
+En una base recién sembrada (primer arranque, p. ej. en desarrollo) se crean usuarios de ejemplo con contraseña `123456`:
 
 - `admin@bakery.com` — Administrador Panadería
 - `admin@ropa.com` — Administrador Tienda de Ropa
 - `cajero@ropa.com` — Cajero
 
-> La cuenta de propietario (`SUPER_ADMIN`) usa el correo real del negocio (`nimboerp@gmail.com`) con contraseña temporal — cámbiala desde **Perfil** después del primer acceso.
+> **En producción la base se limpia al lanzar**: solo existe la cuenta de propietario (`nimboerp@gmail.com`, rol `SUPER_ADMIN`, contraseña temporal que debes cambiar desde **Perfil** en el primer acceso). No quedan usuarios demo públicos.
 
 ## Despliegue en Render
 
-El repositorio incluye `render.yaml` (blueprint) y `Dockerfile`. Un commit a `master` dispara deploy automático:
+El repositorio incluye `render.yaml` (blueprint). Un commit a `master` dispara deploy automático:
 
 - Build: `npm ci && npm run build`
 - Start: `node dist/server.cjs`
-- Variables: `NODE_ENV=production`, `APP_URL`, `JWT_SECRET` (autogenerada), `PORT=10000`, `DATABASE_URL` (Supabase), `SMTP_*`
+- Variables: `NODE_ENV=production`, `APP_URL`, `JWT_SECRET` (autogenerada), `PORT=10000`, `TRIAL_DAYS`. La `DATABASE_URL` está marcada con `sync: false` en el blueprint: **se configura desde el dashboard de Render** para no exponer credenciales en el repositorio.
 - Base de datos: **PostgreSQL en Supabase** (el plan free de Render no tiene disco persistente; con Supabase los datos sobreviven a cada deploy)
 
 ### Confirmación de pagos
@@ -141,7 +142,7 @@ src/
   components/                # UI React (layout, landing, Settings, modales)
   db/db.ts                   # SQLite: esquema, seed y API de datos
   db/backup.ts               # Respaldo automático diario
-  mailer.ts                  # Envío de emails (SMTP)
+  mailer.ts                  # Envío de emails (Gmail API / EmailJS / SMTP)
   types.ts                   # Tipos de dominio (roles, monedas, negocios)
 tests/                       # Vitest + Supertest
 ```
