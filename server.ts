@@ -652,12 +652,15 @@ async function registerAppInternal(): Promise<express.Express> {
 
   // --- Subscription Routes ---
 
-  app.get("/api/subscription/payments", authenticate, async (req, res) => {
+  app.get("/api/subscription/payments", auth, async (req, res) => {
     const { orgId } = req.query;
     if (!orgId) {
       return res.status(400).json({ error: "orgId es requerido" });
     }
     try {
+      if (req.user!.role !== Role.SUPER_ADMIN && req.orgId !== orgId) {
+        return res.status(403).json({ error: "No tienes permisos para ver estos pagos" });
+      }
       const allPayments = await db.subscriptionPayments.findMany();
       const orgPayments = allPayments.filter(p => p.organizationId === orgId);
       orgPayments.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -1863,10 +1866,10 @@ app.post("/api/rrhh/employees", authSub, async (req, res) => {
   app.get("/api/configuracion", authSub, async (_req, res) => {
     const settings = await db.systemSettings.findMany();
     const logs = (await db.auditLogs.findMany()).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 100);
-    return res.json({ settings, logs, users: await db.users.findMany() });
+    return res.json({ settings, logs });
   });
 
-  app.post("/api/configuracion", authSub, authorize(Role.ADMIN, Role.SUPER_ADMIN), async (req, res) => {
+  app.post("/api/configuracion", auth, authorize(Role.SUPER_ADMIN), async (req, res) => {
     const { settings, userId } = req.body;
     if (settings && typeof settings === "object") {
       for (const key of Object.keys(settings)) {
