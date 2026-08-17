@@ -114,10 +114,11 @@ Prioridad de transporte: `GMAIL_*` → `EMAILJS_*` → `SMTP_*`. En el plan free
 
 La base de datos se siembra con usuarios de ejemplo (contraseña `123456`):
 
-- `admin@nimbo.com` — Administrador General
 - `admin@bakery.com` — Administrador Panadería
 - `admin@ropa.com` — Administrador Tienda de Ropa
 - `cajero@ropa.com` — Cajero
+
+> La cuenta de propietario (`SUPER_ADMIN`) usa el correo real del negocio (`nimboerp@gmail.com`) con contraseña temporal — cámbiala desde **Perfil** después del primer acceso.
 
 ## Despliegue en Render
 
