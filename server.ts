@@ -515,16 +515,16 @@ async function registerAppInternal(): Promise<express.Express> {
     }
     const { token, password } = parsed.data;
 
-    const user = await (await db.users.findMany()).find(async (u: any) => {
-      const valid = await db.passwordResetTokens.findValid(u.id, token);
-      return !!valid;
-    });
+    const valid = await db.passwordResetTokens.findValidByToken(token);
+    if (!valid) {
+      return res.status(400).json({ error: "Enlace inválido o expirado. Solicita uno nuevo." });
+    }
 
+    const user = await db.users.findById(valid.userId);
     if (!user) {
       return res.status(400).json({ error: "Enlace inválido o expirado. Solicita uno nuevo." });
     }
 
-    const valid = await db.passwordResetTokens.findValid(user.id, token);
     const hashed = await bcrypt.hash(password, SALT_ROUNDS);
     await db.users.update(user.id, { password: hashed });
     await db.passwordResetTokens.markUsed(valid.id);

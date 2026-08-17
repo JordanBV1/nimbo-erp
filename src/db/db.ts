@@ -1090,6 +1090,7 @@ const sqliteDb = {
       return { id, ...data };
     },
     findValid: (userId: string, token: string) => toCamel(firstRow<any>(getDb().prepare(`SELECT * FROM password_reset_tokens WHERE user_id = ? AND token = ? AND used = 0 AND expires_at > strftime('%Y-%m-%dT%H:%M:%fZ','now') ORDER BY created_at DESC LIMIT 1`), [userId, token])),
+    findValidByToken: (token: string) => toCamel(firstRow<any>(getDb().prepare(`SELECT * FROM password_reset_tokens WHERE token = ? AND used = 0 AND expires_at > strftime('%Y-%m-%dT%H:%M:%fZ','now') ORDER BY created_at DESC LIMIT 1`), [token])),
     markUsed: (id: string) => { getDb().prepare("UPDATE password_reset_tokens SET used = 1 WHERE id = ?").run(id); },
     invalidateForUser: (userId: string) => { getDb().prepare("UPDATE password_reset_tokens SET used = 1 WHERE user_id = ?").run(userId); },
   },

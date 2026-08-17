@@ -994,6 +994,7 @@ export const pgDb = {
       return { id, ...data };
     },
     findValid: async (userId: string, token: string) => toCamel(await pgGet(`SELECT * FROM password_reset_tokens WHERE user_id = ? AND token = ? AND used = 0 AND expires_at > to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') ORDER BY created_at DESC LIMIT 1`, [userId, token])),
+    findValidByToken: async (token: string) => toCamel(await pgGet(`SELECT * FROM password_reset_tokens WHERE token = ? AND used = 0 AND expires_at > to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') ORDER BY created_at DESC LIMIT 1`, [token])),
     markUsed: async (id: string) => { await pgRun("UPDATE password_reset_tokens SET used = 1 WHERE id = ?", [id]); },
     invalidateForUser: async (userId: string) => { await pgRun("UPDATE password_reset_tokens SET used = 1 WHERE user_id = ?", [userId]); },
   },
