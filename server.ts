@@ -1692,9 +1692,9 @@ await db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "1010",
 
   app.get("/api/rrhh", authSub, async (req, res) => {
     const employees = await db.employees.findManyByOrg(req.orgId!);
-    const attendances = await db.attendances.findMany();
-    const periods = await db.payrollPeriods.findMany();
-    const details = await db.payrollDetails.findMany();
+    const attendances = await db.attendances.findManyByOrg(req.orgId!);
+    const periods = await db.payrollPeriods.findManyByOrg(req.orgId!);
+    const details = await db.payrollDetails.findManyByOrg(req.orgId!);
 
     const detailedEmployees = employees.map((emp) => ({ ...emp, attendances: attendances.filter((a) => a.employeeId === emp.id) }));
     const detailedPeriods = periods.map((p) => ({
@@ -1731,6 +1731,7 @@ app.post("/api/rrhh/employees", authSub, async (req, res) => {
       checkIn: checkIn ? `${date}T${checkIn}:00.000Z` : undefined,
       checkOut: checkOut ? `${date}T${checkOut}:00.000Z` : undefined,
       hoursWorked: hoursWorked > 0 ? Number(hoursWorked.toFixed(2)) : undefined,
+      organizationId: req.orgId!,
     });
     logAudit(req.body.userId || "sistema", "CREATE", "Attendance", att.id, `Attendance for employee ${employeeId} on ${date}`);
     return res.json(att);
@@ -1749,7 +1750,7 @@ app.post("/api/rrhh/employees", authSub, async (req, res) => {
       const deductions = adj ? Number(adj.deductions) || 0 : 0;
       const netPay = base + overtime + bonuses - deductions;
 
-      await db.payrollDetails.create({ payrollPeriodId: period.id, employeeId: emp.id, baseAmount: base, overtime, bonuses, deductions, netPay });
+      await db.payrollDetails.create({ payrollPeriodId: period.id, employeeId: emp.id, baseAmount: base, overtime, bonuses, deductions, netPay, organizationId: req.orgId! });
 
       const entry = await db.journalEntries.create({ description: `Gasto Nómina Empleado: ${emp.firstName} ${emp.lastName}`, reference: period.id, status: "posted", organizationId: req.orgId! });
       await db.journalEntryLines.create({ journalEntryId: entry.id, accountId: "5020", debit: netPay, credit: 0 });
@@ -1950,9 +1951,7 @@ app.post("/api/rrhh/employees", authSub, async (req, res) => {
 
     const sales = await db.sales.findManyByOrg(req.orgId!);
     const inxs = await db.cashRegisterTransactions.findManyByOrg(req.orgId!);
-    const orgEmployees = await db.employees.findManyByOrg(req.orgId!);
-    const orgEmployeeIds = new Set(orgEmployees.map((e: any) => e.id));
-    const pDetails = (await db.payrollDetails.findMany()).filter((d: any) => orgEmployeeIds.has(d.employeeId));
+    const pDetails = await db.payrollDetails.findManyByOrg(req.orgId!);
     const invoices = await db.supplierInvoices.findManyByOrg(req.orgId!);
 
     const reportLines: Array<{ fecha: string; concepto: string; ingreso: number; gasto: number }> = [];
@@ -1981,9 +1980,7 @@ app.post("/api/rrhh/employees", authSub, async (req, res) => {
     });
 
     const purchaseOrders = await db.purchaseOrders.findManyByOrg(req.orgId!);
-    const payrollPeriods = await db.payrollPeriods.findMany();
-    const orgPeriodIds = new Set(pDetails.map((d: any) => d.payrollPeriodId));
-    const orgPayrollPeriods = payrollPeriods.filter((p: any) => orgPeriodIds.has(p.id));
+    const orgPayrollPeriods = await db.payrollPeriods.findManyByOrg(req.orgId!);
     for (const inv of invoices) {
       const po = inv.purchaseOrderId ? purchaseOrders.find((p) => p.id === inv.purchaseOrderId) : null;
       const refDate = po ? po.createdAt : new Date().toISOString();

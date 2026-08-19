@@ -301,7 +301,7 @@ export function initializeSqliteDatabase() {
   `);
 
   // --- Migration: add organization_id to existing tables ---
-  const orgTables = ["categories", "taxes", "products", "suppliers", "purchase_orders", "customers", "warehouses", "sales", "orders", "recipes", "production_orders", "accounts", "journal_entries", "employees", "variants", "stocks", "stock_movements", "transfers", "supplier_invoices", "cash_register_sessions", "cash_register_transactions", "attendances", "payroll_periods"];
+  const orgTables = ["categories", "taxes", "products", "suppliers", "purchase_orders", "customers", "warehouses", "sales", "orders", "recipes", "production_orders", "accounts", "journal_entries", "employees", "variants", "stocks", "stock_movements", "transfers", "supplier_invoices", "cash_register_sessions", "cash_register_transactions", "attendances", "payroll_periods", "payroll_details"];
   for (const t of orgTables) {
     try { sql.exec(`ALTER TABLE ${t} ADD COLUMN organization_id TEXT REFERENCES organizations(id)`); } catch {}
   }
@@ -1014,17 +1014,19 @@ const sqliteDb = {
   },
   attendances: {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM attendances"))),
+    findManyByOrg: (orgId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM attendances WHERE organization_id = ?"), [orgId])),
     create: (data: any) => {
       const id = generateId();
-      getDb().prepare(`INSERT INTO attendances (id, employee_id, date, check_in, check_out, hours_worked) VALUES (?, ?, ?, ?, ?, ?)`).run(id, data.employeeId, data.date, data.checkIn || null, data.checkOut || null, data.hoursWorked || null);
+      getDb().prepare(`INSERT INTO attendances (id, employee_id, date, check_in, check_out, hours_worked, organization_id) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, data.employeeId, data.date, data.checkIn || null, data.checkOut || null, data.hoursWorked || null, data.organizationId || null);
       return { id, ...data };
     },
   },
   payrollPeriods: {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM payroll_periods"))),
+    findManyByOrg: (orgId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM payroll_periods WHERE organization_id = ?"), [orgId])),
     create: (data: any) => {
       const id = generateId();
-      getDb().prepare(`INSERT INTO payroll_periods (id, start_date, end_date, status) VALUES (?, ?, ?, ?)`).run(id, data.startDate, data.endDate, data.status || "draft");
+      getDb().prepare(`INSERT INTO payroll_periods (id, start_date, end_date, status, organization_id) VALUES (?, ?, ?, ?, ?)`).run(id, data.startDate, data.endDate, data.status || "draft", data.organizationId || null);
       return { id, ...data };
     },
     update: (id: string, data: any) => {
@@ -1040,9 +1042,10 @@ const sqliteDb = {
   },
   payrollDetails: {
     findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM payroll_details"))),
+    findManyByOrg: (orgId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT pd.* FROM payroll_details pd JOIN employees e ON pd.employee_id = e.id WHERE e.organization_id = ?"), [orgId])),
     create: (data: any) => {
       const id = generateId();
-      getDb().prepare(`INSERT INTO payroll_details (id, payroll_period_id, employee_id, base_amount, overtime, bonuses, deductions, net_pay) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.payrollPeriodId, data.employeeId, data.baseAmount || 0, data.overtime || 0, data.bonuses || 0, data.deductions || 0, data.netPay || 0);
+      getDb().prepare(`INSERT INTO payroll_details (id, payroll_period_id, employee_id, base_amount, overtime, bonuses, deductions, net_pay, organization_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.payrollPeriodId, data.employeeId, data.baseAmount || 0, data.overtime || 0, data.bonuses || 0, data.deductions || 0, data.netPay || 0, data.organizationId || null);
       return { id, ...data };
     },
   },

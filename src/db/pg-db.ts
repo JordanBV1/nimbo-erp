@@ -233,7 +233,8 @@ CREATE TABLE IF NOT EXISTS payroll_details (
   id TEXT PRIMARY KEY, payroll_period_id TEXT NOT NULL,
   employee_id TEXT NOT NULL, base_amount DOUBLE PRECISION DEFAULT 0,
   overtime DOUBLE PRECISION DEFAULT 0, bonuses DOUBLE PRECISION DEFAULT 0,
-  deductions DOUBLE PRECISION DEFAULT 0, net_pay DOUBLE PRECISION DEFAULT 0
+  deductions DOUBLE PRECISION DEFAULT 0, net_pay DOUBLE PRECISION DEFAULT 0,
+  organization_id TEXT REFERENCES organizations(id)
 );
 CREATE TABLE IF NOT EXISTS audit_logs (
   id TEXT PRIMARY KEY, user_id TEXT NOT NULL, action TEXT NOT NULL,
@@ -918,17 +919,19 @@ export const pgDb = {
   },
   attendances: {
     findMany: async () => rowsToCamel(await pgQuery("SELECT * FROM attendances")),
+    findManyByOrg: async (orgId: string) => rowsToCamel(await pgQuery("SELECT * FROM attendances WHERE organization_id = ?", [orgId])),
     create: async (data: any) => {
       const id = generateId();
-      await pgRun(`INSERT INTO attendances (id, employee_id, date, check_in, check_out, hours_worked) VALUES (?, ?, ?, ?, ?, ?)`, [id, data.employeeId, data.date, data.checkIn || null, data.checkOut || null, data.hoursWorked || null]);
+      await pgRun(`INSERT INTO attendances (id, employee_id, date, check_in, check_out, hours_worked, organization_id) VALUES (?, ?, ?, ?, ?, ?, ?)`, [id, data.employeeId, data.date, data.checkIn || null, data.checkOut || null, data.hoursWorked || null, data.organizationId || null]);
       return { id, ...data };
     },
   },
   payrollPeriods: {
     findMany: async () => rowsToCamel(await pgQuery("SELECT * FROM payroll_periods")),
+    findManyByOrg: async (orgId: string) => rowsToCamel(await pgQuery("SELECT * FROM payroll_periods WHERE organization_id = ?", [orgId])),
     create: async (data: any) => {
       const id = generateId();
-      await pgRun(`INSERT INTO payroll_periods (id, start_date, end_date, status) VALUES (?, ?, ?, ?)`, [id, data.startDate, data.endDate, data.status || "draft"]);
+      await pgRun(`INSERT INTO payroll_periods (id, start_date, end_date, status, organization_id) VALUES (?, ?, ?, ?, ?)`, [id, data.startDate, data.endDate, data.status || "draft", data.organizationId || null]);
       return { id, ...data };
     },
     update: async (id: string, data: any) => {
@@ -944,9 +947,10 @@ export const pgDb = {
   },
   payrollDetails: {
     findMany: async () => rowsToCamel(await pgQuery("SELECT * FROM payroll_details")),
+    findManyByOrg: async (orgId: string) => rowsToCamel(await pgQuery("SELECT pd.* FROM payroll_details pd JOIN employees e ON pd.employee_id = e.id WHERE e.organization_id = ?", [orgId])),
     create: async (data: any) => {
       const id = generateId();
-      await pgRun(`INSERT INTO payroll_details (id, payroll_period_id, employee_id, base_amount, overtime, bonuses, deductions, net_pay) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [id, data.payrollPeriodId, data.employeeId, data.baseAmount || 0, data.overtime || 0, data.bonuses || 0, data.deductions || 0, data.netPay || 0]);
+      await pgRun(`INSERT INTO payroll_details (id, payroll_period_id, employee_id, base_amount, overtime, bonuses, deductions, net_pay, organization_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [id, data.payrollPeriodId, data.employeeId, data.baseAmount || 0, data.overtime || 0, data.bonuses || 0, data.deductions || 0, data.netPay || 0, data.organizationId || null]);
       return { id, ...data };
     },
   },
