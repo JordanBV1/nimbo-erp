@@ -166,6 +166,7 @@ export default function App() {
   const [posCustomer, setPosCustomer] = useState<string>("");
   const [posDiscount, setPosDiscount] = useState<number>(0);
   const [posPaymentMethod, setPosPaymentMethod] = useState<string>("efectivo");
+  const [isCheckingOut, setIsCheckingOut] = useState<boolean>(false);
   const [posCurrencyChoice, setPosCurrencyChoice] = useState<Currency>(Currency.CUP);
   const [posPaidAmount, setPosPaidAmount] = useState<string>("");
   const [posPointsRedeem, setPosPointsRedeem] = useState<number>(0);
@@ -654,6 +655,8 @@ export default function App() {
       triggerToast("El carrito está vacío", "error");
       return;
     }
+    if (isCheckingOut) return;
+    setIsCheckingOut(true);
 
     // Unify totals based on checkout Currency choice
     let totalCUP = 0;
@@ -664,7 +667,8 @@ export default function App() {
       totalUSD += item.priceUSD * item.quantity;
     });
 
-    const discAmt = Number(posDiscount) || 0;
+    const rawDisc = Number(posDiscount) || 0;
+    const discAmt = Math.max(0, Math.min(rawDisc, totalCUP));
     const finalCUP = Math.max(0, totalCUP - discAmt);
     const finalUSD = Math.max(0, totalUSD - (discAmt / exchangeRate));
 
@@ -691,6 +695,9 @@ export default function App() {
       offlineQueue.enqueue("/api/sales", "POST", checkoutPayload);
       triggerToast("Guardado localmente en modo offline", "success");
       setPosCart([]);
+      setPosDiscount(0);
+      setPosCustomer("");
+      setIsCheckingOut(false);
       return;
     }
 
@@ -712,6 +719,8 @@ export default function App() {
       }
     } catch {
       triggerToast("Fallo de conexión.", "error");
+    } finally {
+      setIsCheckingOut(false);
     }
   };
 
@@ -750,9 +759,13 @@ export default function App() {
         setNewProdPriceUSD("0");
         setNewProdVariants([]);
         loadAllData();
+      } else {
+        const err = await res.json();
+        triggerToast(err.error || "Error al crear el producto", "error");
       }
     } catch (err) {
       console.error(err);
+      triggerToast("Fallo de conexión al crear el producto", "error");
     }
   };
 
@@ -766,6 +779,11 @@ export default function App() {
 
   const handleCreateRecipe = async (e: React.FormEvent) => {
     e.preventDefault();
+    const yq = Number(recipeQty);
+    if (!Number.isFinite(yq) || yq <= 0) {
+      triggerToast("La cantidad de receta debe ser mayor que 0", "error");
+      return;
+    }
     try {
       const res = await fetch("/api/produccion/recipes", {
         method: "POST",
@@ -773,7 +791,7 @@ export default function App() {
         body: JSON.stringify({
           name: recipeName,
           productId: recipeProd,
-          yieldQuantity: Number(recipeQty),
+          yieldQuantity: yq,
           yieldUnit: recipeUnit,
           ingredients: recipeIngs
         })
@@ -784,9 +802,13 @@ export default function App() {
         setRecipeName("");
         setRecipeIngs([]);
         loadAllData();
+      } else {
+        const err = await res.json();
+        triggerToast(err.error || "Error al crear la receta", "error");
       }
     } catch (err) {
       console.error(err);
+      triggerToast("Fallo de conexión al crear la receta", "error");
     }
   };
 
@@ -1956,10 +1978,11 @@ export default function App() {
                             handleCheckout();
                           }
                         }}
-                        className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-2xl py-3.5 text-xs transition-all shadow-lg shadow-blue-600/20 flex items-center justify-center cursor-pointer"
+                        disabled={isCheckingOut}
+                        className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-2xl py-3.5 text-xs transition-all shadow-lg shadow-blue-600/20 flex items-center justify-center cursor-pointer"
                       >
                         <CreditCard className="h-4 w-4 mr-2" />
-                        Completar y Cobrar Venta
+                        {isCheckingOut ? "Procesando..." : "Completar y Cobrar Venta"}
                       </button>
 
                       {/* Transfermovil QR Payment Modal */}
@@ -2285,10 +2308,15 @@ export default function App() {
                     onSubmit={async (e) => {
                       e.preventDefault();
                       const form = e.currentTarget;
+                      const qty = Number((form.elements.namedItem("qty") as HTMLInputElement).value);
+                      if (!Number.isFinite(qty) || qty <= 0) {
+                        triggerToast("La cantidad debe ser un número mayor que 0", "error");
+                        return;
+                      }
                       const payload = {
                         stockId: (form.elements.namedItem("stockId") as HTMLSelectElement).value,
                         type: (form.elements.namedItem("type") as HTMLSelectElement).value,
-                        quantity: Number((form.elements.namedItem("qty") as HTMLInputElement).value),
+                        quantity: qty,
                         reason: (form.elements.namedItem("reason") as HTMLInputElement).value,
                         userId: user.id
                       };
@@ -2301,6 +2329,9 @@ export default function App() {
                         triggerToast("Inventario actualizado correctamente", "success");
                         form.reset();
                         loadAllData();
+                      } else {
+                        const err = await res.json();
+                        triggerToast(err.error || "Error al actualizar el inventario", "error");
                       }
                     }}
                     className="space-y-3"
@@ -2516,16 +2547,25 @@ export default function App() {
                   onSubmit={async (e) => {
                     e.preventDefault();
                     if (newSupplierName) {
-                      await fetch("/api/compras/suppliers", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ name: newSupplierName, contact: newSupplierContact })
-                      });
-                      loadAllData();
-                      setShowSupplierForm(false);
-                      setNewSupplierName("");
-                      setNewSupplierContact("");
-                      triggerToast("Proveedor registrado exitosamente", "success");
+                      try {
+                        const res = await fetch("/api/compras/suppliers", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ name: newSupplierName, contact: newSupplierContact })
+                        });
+                        if (res.ok) {
+                          loadAllData();
+                          setShowSupplierForm(false);
+                          setNewSupplierName("");
+                          setNewSupplierContact("");
+                          triggerToast("Proveedor registrado exitosamente", "success");
+                        } else {
+                          const err = await res.json();
+                          triggerToast(err.error || "Error al registrar el proveedor", "error");
+                        }
+                      } catch {
+                        triggerToast("Error de conexión al registrar proveedor", "error");
+                      }
                     }
                   }}
                   className="bg-[#0F0F12] border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-5 max-w-xl transition-all duration-300"
@@ -2658,23 +2698,32 @@ export default function App() {
                   onSubmit={async (e) => {
                     e.preventDefault();
                     if (newCustomerName) {
-                      await fetch("/api/clientes", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          name: newCustomerName,
-                          email: newCustomerEmail,
-                          phone: newCustomerPhone,
-                          creditLimit: Number(newCustomerCreditLimit) || 0
-                        })
-                      });
-                      loadAllData();
-                      setShowCustomerForm(false);
-                      setNewCustomerName("");
-                      setNewCustomerEmail("");
-                      setNewCustomerPhone("");
-                      setNewCustomerCreditLimit("0");
-                      triggerToast("Cliente registrado exitosamente", "success");
+                      try {
+                        const res = await fetch("/api/clientes", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            name: newCustomerName,
+                            email: newCustomerEmail,
+                            phone: newCustomerPhone,
+                            creditLimit: Number(newCustomerCreditLimit) || 0
+                          })
+                        });
+                        if (res.ok) {
+                          loadAllData();
+                          setShowCustomerForm(false);
+                          setNewCustomerName("");
+                          setNewCustomerEmail("");
+                          setNewCustomerPhone("");
+                          setNewCustomerCreditLimit("0");
+                          triggerToast("Cliente registrado exitosamente", "success");
+                        } else {
+                          const err = await res.json();
+                          triggerToast(err.error || "Error al registrar el cliente", "error");
+                        }
+                      } catch {
+                        triggerToast("Error de conexión al registrar cliente", "error");
+                      }
                     }
                   }}
                   className="bg-[#0F0F12] border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-5 max-w-2xl transition-all duration-300"
@@ -2769,14 +2818,23 @@ export default function App() {
                     <div className="pt-2">
                       <button
                         onClick={async () => {
-                          const pts = prompt("Ingresar Puntos de Fidelidad a sumar:", "50");
-                          if (pts) {
-                            await fetch(`/api/clientes/${c.id}`, {
-                              method: "PUT",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ loyaltyPoints: c.loyaltyPoints + Number(pts) })
-                            });
+                          const input = prompt("Ingresar Puntos de Fidelidad a sumar:", "50");
+                          if (input === null || input === "") return;
+                          const pts = Number(input);
+                          if (!Number.isFinite(pts)) {
+                            triggerToast("Ingresa un número válido de puntos", "error");
+                            return;
+                          }
+                          const res = await fetch(`/api/clientes/${c.id}`, {
+                            method: "PUT",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ loyaltyPoints: Math.max(0, (Number(c.loyaltyPoints) || 0) + pts) })
+                          });
+                          if (res.ok) {
                             loadAllData();
+                            triggerToast("Puntos actualizados", "success");
+                          } else {
+                            triggerToast("Error al actualizar los puntos", "error");
                           }
                         }}
                         className="w-full text-center text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded-xl py-1.5 text-xs font-bold transition-all cursor-pointer"
@@ -3183,15 +3241,21 @@ export default function App() {
                   <form
                     onSubmit={async (e) => {
                       e.preventDefault();
-                      const rate = (e.currentTarget.elements.namedItem("rate") as HTMLInputElement).value;
+                      const rate = Number((e.currentTarget.elements.namedItem("rate") as HTMLInputElement).value);
+                      if (!Number.isFinite(rate) || rate <= 0) {
+                        triggerToast("La tasa de cambio debe ser mayor que 0", "error");
+                        return;
+                      }
                       const res = await fetch("/api/configuracion", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ settings: { exchange_rate_usd: rate }, userId: user.id })
+                        body: JSON.stringify({ settings: { exchange_rate_usd: String(rate) }, userId: user.id })
                       });
                       if (res.ok) {
                         triggerToast("Tasa de cambio guardada", "success");
                         loadAllData();
+                      } else {
+                        triggerToast("Error al guardar la tasa de cambio", "error");
                       }
                     }}
                     className="space-y-3"

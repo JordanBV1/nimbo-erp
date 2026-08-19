@@ -1,6 +1,15 @@
 import nodemailer from "nodemailer";
 import { logger } from "./logger.js";
 
+export function escapeHtml(value: string): string {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export interface MailerConfig {
   host: string;
   port: number;
@@ -234,15 +243,16 @@ export async function probeMail(): Promise<{
 }
 
 export async function sendPasswordResetEmail(to: string, resetUrl: string): Promise<boolean> {
+  const safeUrl = escapeHtml(resetUrl);
   const html = `
     <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;background:#0A0A0B;border-radius:12px;">
       <h2 style="color:#fff;margin-bottom:16px;">Restablecer contraseña</h2>
       <p style="color:#cbd5e1;font-size:14px;line-height:1.6;">Recibimos una solicitud para restablecer la contraseña de tu cuenta en <strong style="color:#fff;">Nimbo ERP</strong>.</p>
       <p style="color:#cbd5e1;font-size:14px;line-height:1.6;">Este enlace es válido por <strong style="color:#fff;">1 hora</strong>. Si no solicitaste este cambio, puedes ignorar este correo.</p>
       <div style="text-align:center;margin:28px 0;">
-        <a href="${resetUrl}" style="background:#3b82f6;color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:bold;font-size:14px;">Restablecer contraseña</a>
+        <a href="${safeUrl}" style="background:#3b82f6;color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:bold;font-size:14px;">Restablecer contraseña</a>
       </div>
-      <p style="color:#64748b;font-size:12px;">O copia y pega este enlace en tu navegador:<br/><span style="color:#3b82f6;word-break:break-all;">${resetUrl}</span></p>
+      <p style="color:#64748b;font-size:12px;">O copia y pega este enlace en tu navegador:<br/><span style="color:#3b82f6;word-break:break-all;">${safeUrl}</span></p>
     </div>
   `;
   return sendMail(to, "Restablecer contraseña — Nimbo ERP", html);
@@ -250,13 +260,15 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
 
 export async function sendSubscriptionReminderEmail(to: string, orgName: string, daysLeft: number, payUrl: string): Promise<boolean> {
   const when = daysLeft <= 0 ? "hoy" : `en ${daysLeft} día${daysLeft === 1 ? "" : "s"}`;
+  const safeOrg = escapeHtml(orgName);
+  const safeUrl = escapeHtml(payUrl);
   const html = `
     <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;background:#0A0A0B;border-radius:12px;">
       <h2 style="color:#fff;margin-bottom:16px;">Tu suscripción expira ${when}</h2>
-      <p style="color:#cbd5e1;font-size:14px;line-height:1.6;">La suscripción de <strong style="color:#fff;">${orgName}</strong> en <strong style="color:#fff;">Nimbo ERP</strong> está por vencer.</p>
+      <p style="color:#cbd5e1;font-size:14px;line-height:1.6;">La suscripción de <strong style="color:#fff;">${safeOrg}</strong> en <strong style="color:#fff;">Nimbo ERP</strong> está por vencer.</p>
       <p style="color:#cbd5e1;font-size:14px;line-height:1.6;">Renueva antes del vencimiento para no interrumpir el acceso a tu sistema.</p>
       <div style="text-align:center;margin:28px 0;">
-        <a href="${payUrl}" style="background:#3b82f6;color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:bold;font-size:14px;">Renovar suscripción</a>
+        <a href="${safeUrl}" style="background:#3b82f6;color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:bold;font-size:14px;">Renovar suscripción</a>
       </div>
       <p style="color:#64748b;font-size:12px;">Si ya realizaste el pago, ignora este correo.</p>
     </div>

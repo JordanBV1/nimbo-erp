@@ -611,7 +611,7 @@ async function registerAppInternal(): Promise<express.Express> {
     return res.json(filtered);
   });
 
-  app.post("/api/branches", authenticate, async (req, res) => {
+  app.post("/api/branches", authenticate, authorize(Role.ADMIN, Role.SUPER_ADMIN), async (req, res) => {
     const parsed = branchSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.errors[0].message });
@@ -982,6 +982,7 @@ async function registerAppInternal(): Promise<express.Express> {
           costCUP: Number(v.costCUP) || 0,
           costUSD: Number(v.costUSD) || 0,
           stock: Number(v.stock) || 0,
+          organizationId: req.orgId!,
         });
       }
     }
@@ -1027,8 +1028,8 @@ async function registerAppInternal(): Promise<express.Express> {
     return res.json({
       stocks: detailedStocks,
       warehouses,
-      movements: (await db.stockMovements.findMany()).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 50),
-      transfers: (await db.transfers.findMany()).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+      movements: (await db.stockMovements.findManyByOrg(req.orgId!)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 50),
+      transfers: (await db.transfers.findManyByOrg(req.orgId!)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     });
   });
 
@@ -1116,6 +1117,7 @@ async function registerAppInternal(): Promise<express.Express> {
           quantity: 0,
           minStock: 5,
           maxStock: 9999,
+          organizationId: req.orgId!,
         });
       }
 
@@ -1158,6 +1160,10 @@ async function registerAppInternal(): Promise<express.Express> {
 
   app.post("/api/pos/sessions/close", authSub, async (req, res) => {
     const { sessionId, countedCash, expectedCash } = req.body;
+    const existing = (await db.cashRegisterSessions.findMany()).find((s: any) => s.id === sessionId && s.organizationId === req.orgId!);
+    if (!existing) {
+      return res.status(403).json({ error: "No tienes permisos para cerrar esta sesión de caja" });
+    }
     const session = await db.cashRegisterSessions.update(sessionId, {
       status: "closed",
       endDate: new Date().toISOString(),
@@ -1195,25 +1201,45 @@ async function registerAppInternal(): Promise<express.Express> {
       return res.status(403).json({ error: "La sucursal especificada no pertenece a tu organización" });
     }
 
+    const rate = Number(await db.systemSettings.getValue("exchange_rate_usd", "120"));
+    const safeRate = Number.isFinite(rate) && rate > 0 ? rate : 120;
+
+    const serverTotalCUP = items.reduce((sum, i) => sum + (Number(i.priceCUP) || 0) * (Number(i.quantity) || 0), 0);
+    const serverTotalUSD = items.reduce((sum, i) => sum + (Number(i.priceUSD) || 0) * (Number(i.quantity) || 0), 0);
+    const serverDisc = Math.max(0, Math.min(Number(discount) || 0, serverTotalCUP));
+    const serverGrandCUP = Math.max(0, serverTotalCUP - serverDisc);
+    const serverGrandUSD = Math.max(0, serverTotalUSD - serverDisc / safeRate);
+
+    const stocks = await db.stocks.findManyByOrg(req.orgId!);
+    const branchWarehouse = (await db.warehouses.findManyByOrg(req.orgId!)).find((w) => w.branchId === branchId);
+
+    for (const item of items) {
+      if (branchWarehouse) {
+        const matchingStock = stocks.find(
+          (s) => s.warehouseId === branchWarehouse.id && s.productId === item.productId && (!item.variantId || s.variantId === item.variantId)
+        );
+        if (matchingStock && matchingStock.quantity < (Number(item.quantity) || 0)) {
+          return res.status(400).json({ error: `Stock insuficiente para: ${item.productId}` });
+        }
+      }
+    }
+
     const sale = await db.sales.create({
       branchId,
       customerId: customerId || undefined,
       date: new Date().toISOString(),
-      totalCUP: Number(totalCUP) || 0,
-      totalUSD: Number(totalUSD) || 0,
-      taxTotalCUP: Number(taxTotalCUP) || 0,
-      taxTotalUSD: Number(taxTotalUSD) || 0,
-      discount: Number(discount) || 0,
-      grandTotalCUP: Number(grandTotalCUP) || 0,
-      grandTotalUSD: Number(grandTotalUSD) || 0,
+      totalCUP: serverTotalCUP,
+      totalUSD: serverTotalUSD,
+      taxTotalCUP: Math.max(0, Number(taxTotalCUP) || 0),
+      taxTotalUSD: Math.max(0, Number(taxTotalUSD) || 0),
+      discount: serverDisc,
+      grandTotalCUP: serverGrandCUP,
+      grandTotalUSD: serverGrandUSD,
       paymentMethod: paymentMethod || "efectivo",
       status: "completed",
       userId: userId || req.user!.userId,
       organizationId: req.orgId!,
     });
-
-    const stocks = await db.stocks.findManyByOrg(req.orgId!);
-    const branchWarehouse = (await db.warehouses.findManyByOrg(req.orgId!)).find((w) => w.branchId === branchId);
 
     for (const item of items) {
       await db.saleItems.create({
@@ -1762,7 +1788,7 @@ app.post("/api/rrhh/employees", authSub, async (req, res) => {
 
   // --- User Management ---
 
-  app.get("/api/users", authSub, async (req, res) => {
+  app.get("/api/users", authSub, authorize(Role.ADMIN, Role.SUPER_ADMIN), async (req, res) => {
     const orgBranches = (await db.branches.findMany()).filter((b: any) => b.organizationId === req.orgId!);
     const orgBranchIds = new Set(orgBranches.map((b: any) => b.id));
     const allUsers = (await db.users.findMany()).filter((u: any) => orgBranchIds.has(u.branchId));
@@ -1786,6 +1812,9 @@ app.post("/api/rrhh/employees", authSub, async (req, res) => {
     if (!name || !email || !role) {
       return res.status(400).json({ error: "Nombre, email y rol son requeridos" });
     }
+    if (!password || password.length < 6) {
+      return res.status(400).json({ error: "La contraseña es obligatoria (mínimo 6 caracteres)" });
+    }
 
     const isAdmin = req.user!.role === Role.ADMIN || req.user!.role === Role.SUPER_ADMIN;
     const isSameBranch = req.user!.branchId === branchId || !branchId;
@@ -1804,12 +1833,12 @@ app.post("/api/rrhh/employees", authSub, async (req, res) => {
       return res.status(403).json({ error: "La sucursal especificada no pertenece a tu organización" });
     }
 
-    const hashedPassword = password ? await bcrypt.hash(password, SALT_ROUNDS) : undefined;
+    const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
 
     const newUser = await db.users.create({
       name,
       email: email.trim().toLowerCase(),
-      password: hashedPassword || (await bcrypt.hash("123456", SALT_ROUNDS)),
+      password: hashedPassword,
       role: role as Role,
       branchId: targetBranchId || ""
     });
@@ -1875,9 +1904,18 @@ app.post("/api/rrhh/employees", authSub, async (req, res) => {
 
   // --- Config ---
 
-  app.get("/api/configuracion", authSub, async (_req, res) => {
+  app.get("/api/configuracion", authSub, async (req, res) => {
     const settings = await db.systemSettings.findMany();
-    const logs = (await db.auditLogs.findMany()).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 100);
+    const isAdmin = req.user!.role === Role.ADMIN || req.user!.role === Role.SUPER_ADMIN;
+    let logs: any[] = [];
+    if (isAdmin) {
+      const orgBranchIds = new Set((await db.branches.findMany()).filter((b: any) => b.organizationId === req.orgId!).map((b: any) => b.id));
+      const orgUserIds = new Set((await db.users.findMany()).filter((u: any) => orgBranchIds.has(u.branchId)).map((u: any) => u.id));
+      logs = (await db.auditLogs.findMany())
+        .filter((l: any) => orgUserIds.has(l.userId))
+        .sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt))
+        .slice(0, 100);
+    }
     return res.json({ settings, logs });
   });
 
@@ -1913,11 +1951,16 @@ app.post("/api/rrhh/employees", authSub, async (req, res) => {
     if (!user) {
       return res.status(404).json({ error: "Usuario no encontrado" });
     }
+    let ticketOrgId = "";
+    if (user.branchId) {
+      const userBranch = (await db.branches.findMany()).find((b: any) => b.id === user.branchId);
+      ticketOrgId = userBranch?.organizationId || "";
+    }
     const ticket = await db.supportTickets.create({
       userId: user.id,
       userName: user.name,
       userEmail: user.email,
-      organizationId: user.branchId || "",
+      organizationId: ticketOrgId,
       subject,
       message,
     });

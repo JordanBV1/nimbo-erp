@@ -7,7 +7,11 @@ process.env.NODE_ENV = "test";
 process.env.JWT_SECRET = "test-secret-key";
 process.env.DB_PATH = TEST_DB;
 process.env.APP_URL = "http://localhost:3000";
+delete process.env.DATABASE_URL;
 
-if (fs.existsSync(TEST_DB)) {
-  fs.rmSync(TEST_DB, { force: true });
+for (const suffix of ["", "-wal", "-shm"]) {
+  const f = `${TEST_DB}${suffix}`;
+  if (fs.existsSync(f)) {
+    fs.rmSync(f, { force: true });
+  }
 }

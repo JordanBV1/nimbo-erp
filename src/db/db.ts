@@ -510,15 +510,21 @@ export function initializeSqliteDatabase() {
 }
 
 // --- Map camelCase JS columns to snake_case SQL columns ---
+// CUP/USD are currency acronyms: priceCUP -> price_cup (not price_c_u_p)
 function toSnake(str: string): string {
-  return str.replace(/[A-Z]/g, l => "_" + l.toLowerCase());
+  return str
+    .replace(/CUP$/, "_cup")
+    .replace(/USD$/, "_usd")
+    .replace(/[A-Z]/g, l => "_" + l.toLowerCase());
 }
 
 function toCamel(row: Record<string, any>): any {
   if (!row) return row;
   const result: any = {};
   for (const key of Object.keys(row)) {
-    const camelKey = key.replace(/_([a-z])/g, (_, l) => l.toUpperCase());
+    const camelKey = key
+      .replace(/_(cup|usd)$/, (_, s) => s.toUpperCase())
+      .replace(/_([a-z])/g, (_, l) => l.toUpperCase());
     result[camelKey] = row[key];
   }
   return result;
@@ -526,6 +532,13 @@ function toCamel(row: Record<string, any>): any {
 
 function rowsToCamel(rows: Record<string, any>[]): any[] {
   return rows.map(toCamel);
+}
+
+function parseTransferItems(t: any): any {
+  if (typeof t.items === "string") {
+    try { t.items = JSON.parse(t.items); } catch { t.items = []; }
+  }
+  return t;
 }
 
 export const getRawDb = getDb;
@@ -706,8 +719,8 @@ const sqliteDb = {
     },
   },
   transfers: {
-    findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM transfers"))),
-    findManyByOrg: (orgId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM transfers WHERE organization_id = ?"), [orgId])),
+    findMany: () => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM transfers"))).map(parseTransferItems),
+    findManyByOrg: (orgId: string) => rowsToCamel(allRows<any>(getDb().prepare("SELECT * FROM transfers WHERE organization_id = ?"), [orgId])).map(parseTransferItems),
     create: (data: any) => {
       const id = generateId();
       const now = new Date().toISOString();

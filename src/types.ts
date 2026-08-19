@@ -56,7 +56,7 @@ export interface SubscriptionPayment {
   platform: 'transfermovil' | 'enzona';
   phone?: string;
   transactionId: string;
-  status: 'pending' | 'verified' | 'failed';
+  status: 'pending' | 'verified' | 'failed' | 'rejected';
   date: string;
 }
 

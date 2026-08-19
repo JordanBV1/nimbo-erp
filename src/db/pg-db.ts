@@ -13,14 +13,19 @@ function generateId(): string {
 }
 
 function toSnake(str: string): string {
-  return str.replace(/[A-Z]/g, l => "_" + l.toLowerCase());
+  return str
+    .replace(/CUP$/, "_cup")
+    .replace(/USD$/, "_usd")
+    .replace(/[A-Z]/g, l => "_" + l.toLowerCase());
 }
 
 function toCamel(row: Record<string, any> | null): any {
   if (!row) return row;
   const result: any = {};
   for (const key of Object.keys(row)) {
-    const camelKey = key.replace(/_([a-z])/g, (_, l) => l.toUpperCase());
+    const camelKey = key
+      .replace(/_(cup|usd)$/, (_, s) => s.toUpperCase())
+      .replace(/_([a-z])/g, (_, l) => l.toUpperCase());
     result[camelKey] = row[key];
   }
   return result;
@@ -28,6 +33,13 @@ function toCamel(row: Record<string, any> | null): any {
 
 function rowsToCamel(rows: Record<string, any>[]): any[] {
   return rows.map(toCamel);
+}
+
+function parseTransferItems(t: any): any {
+  if (typeof t.items === "string") {
+    try { t.items = JSON.parse(t.items); } catch { t.items = []; }
+  }
+  return t;
 }
 
 const TS_DEFAULT = "to_char(now() at time zone 'utc', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')";
@@ -611,8 +623,8 @@ export const pgDb = {
     },
   },
   transfers: {
-    findMany: async () => rowsToCamel(await pgQuery("SELECT * FROM transfers")),
-    findManyByOrg: async (orgId: string) => rowsToCamel(await pgQuery("SELECT * FROM transfers WHERE organization_id = ?", [orgId])),
+    findMany: async () => rowsToCamel(await pgQuery("SELECT * FROM transfers")).map(parseTransferItems),
+    findManyByOrg: async (orgId: string) => rowsToCamel(await pgQuery("SELECT * FROM transfers WHERE organization_id = ?", [orgId])).map(parseTransferItems),
     create: async (data: any) => {
       const id = generateId();
       const now = new Date().toISOString();
