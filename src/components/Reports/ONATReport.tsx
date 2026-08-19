@@ -35,7 +35,7 @@ export default function ONATReport() {
       const res = await fetch(`/api/reportes/onat?month=${month}&year=${year}`, { signal });
       if (res.ok) {
         const data = await res.json();
-        if (!signal?.aborted) setReport(data);
+        if (!signal?.aborted) setReport({ ...data, lines: Array.isArray(data.lines) ? data.lines : [] });
       }
     } catch (err: any) {
       if (err?.name !== "AbortError") console.error("Error loading ONAT report:", err);

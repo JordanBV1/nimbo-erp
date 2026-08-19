@@ -1957,8 +1957,10 @@ app.post("/api/rrhh/employees", authSub, async (req, res) => {
     const reportLines: Array<{ fecha: string; concepto: string; ingreso: number; gasto: number }> = [];
 
     const isTargetMonth = (dateStr: string) => {
-      const d = new Date(dateStr);
-      return (d.getMonth() + 1) === m && d.getFullYear() === y;
+      const parts = (dateStr || "").substring(0, 10).split("-");
+      const yy = Number(parts[0]);
+      const mm = Number(parts[1]);
+      return yy === y && mm === m;
     };
 
     sales.forEach((s) => {

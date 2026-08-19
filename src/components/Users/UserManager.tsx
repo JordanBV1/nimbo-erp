@@ -109,12 +109,14 @@ export default function UserManager({
 
   useEffect(() => {
     if (!org?.id) return;
-    fetch(`/api/subscription/pricing?orgId=${org.id}`)
+    const ctrl = new AbortController();
+    fetch(`/api/subscription/pricing?orgId=${org.id}`, { signal: ctrl.signal })
       .then((r) => (r.ok ? r.json() : null))
       .then((p) => {
-        if (p) setPricing({ basePrice: p.basePrice, perBranchPrice: p.perBranchPrice, totalPrice: p.totalPrice });
+        if (p && !ctrl.signal.aborted) setPricing({ basePrice: p.basePrice, perBranchPrice: p.perBranchPrice, totalPrice: p.totalPrice });
       })
       .catch(() => {});
+    return () => ctrl.abort();
   }, [org?.id]);
 
   const openCreateModal = () => {

@@ -29,7 +29,7 @@ interface SubscriptionReceiptProps {
 }
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString("es-CU", { year: "numeric", month: "long", day: "numeric" });
-const fmtMoney = (n: number) => `${n.toLocaleString()}.00 CUP`;
+const fmtMoney = (n: number) => `${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CUP`;
 
 export default function SubscriptionReceipt({ receipt, onClose, triggerToast }: SubscriptionReceiptProps) {
   const ref = useRef<HTMLDivElement>(null);
@@ -82,7 +82,7 @@ export default function SubscriptionReceipt({ receipt, onClose, triggerToast }: 
       doc.setFont("helvetica", "bold");
       doc.text("MONTO PAGADO", 56, y + 20);
       doc.setFontSize(16);
-      doc.text(`${receipt.amount.toLocaleString()}.00 CUP`, w - 56, y + 20, { align: "right" });
+      doc.text(fmtMoney(receipt.amount), w - 56, y + 20, { align: "right" });
       doc.setFontSize(8);
       doc.setFont("helvetica", "normal");
       doc.setTextColor(200, 210, 230);
@@ -137,7 +137,7 @@ export default function SubscriptionReceipt({ receipt, onClose, triggerToast }: 
               </div>
             </div>
             <div className="text-right">
-              <p className="text-lg font-black text-white font-mono">{receipt.amount.toLocaleString()}.00 CUP</p>
+              <p className="text-lg font-black text-white font-mono">{fmtMoney(receipt.amount)}</p>
               <p className="text-[9px] text-slate-400 uppercase">{fmtDate(receipt.date)}</p>
             </div>
           </div>

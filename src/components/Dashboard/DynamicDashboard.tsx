@@ -396,8 +396,8 @@ export default function DynamicDashboard({
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs font-bold text-white">{p.units} uds</p>
-                    <p className="text-[10px] text-blue-400 font-medium font-price">{formatCUP(p.revenueCUP)}</p>
+                    <p className="text-xs font-bold text-white">{p.units ?? 0} uds</p>
+                    <p className="text-[10px] text-blue-400 font-medium font-price">{formatCUP(p.revenueCUP ?? 0)}</p>
                   </div>
                 </div>
               ))
