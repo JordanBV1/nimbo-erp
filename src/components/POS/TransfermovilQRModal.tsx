@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { QrCode, Copy, Check, CreditCard, Phone, Smartphone, ShieldCheck, X, ArrowRight } from "lucide-react";
 
@@ -29,6 +29,20 @@ export const TransfermovilQRModal: React.FC<TransfermovilQRModalProps> = ({
   const [copiedPhone, setCopiedPhone] = useState(false);
   const [transactionRef, setTransactionRef] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const mountedRef = useRef(true);
+  const onConfirmRef = useRef(onConfirmPayment);
+  onConfirmRef.current = onConfirmPayment;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; timersRef.current.forEach(clearTimeout); timersRef.current = []; };
+  }, []);
+
+  const safeSet = useCallback(<T,>(setter: (v: T) => void, value: T, delay: number) => {
+    const t = setTimeout(() => { if (mountedRef.current) setter(value); }, delay);
+    timersRef.current.push(t);
+  }, []);
 
   if (!isOpen) return null;
 
@@ -38,24 +52,25 @@ export const TransfermovilQRModal: React.FC<TransfermovilQRModalProps> = ({
   const qrPayload = `ETECSA|TRANSFERMOVIL|PAYMENT|TARJETA:${cleanCard}|TELEFONO:${phone.replace(/\s+/g, "")}|MONTO:${amount.toFixed(2)}|MONEDA:${currency}|MERCHANT:${merchantId}`;
 
   const handleCopyCard = () => {
-    navigator.clipboard.writeText(cleanCard);
+    navigator.clipboard.writeText(cleanCard).catch(() => {});
     setCopiedCard(true);
-    setTimeout(() => setCopiedCard(false), 2000);
+    safeSet(setCopiedCard, false, 2000);
   };
 
   const handleCopyPhone = () => {
-    navigator.clipboard.writeText(phone);
+    navigator.clipboard.writeText(phone).catch(() => {});
     setCopiedPhone(true);
-    setTimeout(() => setCopiedPhone(false), 2000);
+    safeSet(setCopiedPhone, false, 2000);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setIsVerifying(true);
-    setTimeout(() => {
-      setIsVerifying(false);
-      onConfirmPayment(transactionRef.trim() || `TM-${Math.floor(100000 + Math.random() * 900000)}`);
+    const ref = transactionRef.trim() || `TM-${Math.floor(100000 + Math.random() * 900000)}`;
+    const t = setTimeout(() => {
+      if (mountedRef.current) { setIsVerifying(false); onConfirmRef.current(ref); }
     }, 400);
+    timersRef.current.push(t);
   };
 
   return (

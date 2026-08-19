@@ -46,8 +46,13 @@ export const TransfermovilSettings: React.FC<TransfermovilSettingsProps> = ({
       });
 
       if (res.ok) {
-        triggerToast("Datos de cobro por Transfermóvil actualizados con éxito", "success");
-        onRefreshData();
+        const data = await res.json();
+        if (data.success) {
+          triggerToast("Datos de cobro por Transfermóvil actualizados con éxito", "success");
+          onRefreshData();
+        } else {
+          triggerToast(data.error || "Error al guardar la configuración de Transfermóvil", "error");
+        }
       } else {
         triggerToast("Error al guardar la configuración de Transfermóvil", "error");
       }

@@ -49,22 +49,22 @@ export default function Header({ user, branch, onLogout, onRefreshData, onOpenPr
   const autoSync = async () => {
     if (offlineQueue.getQueue().length > 0) {
       setIsSyncing(true);
-      const success = await offlineQueue.syncWithServer();
+      try {
+        const success = await offlineQueue.syncWithServer();
+        if (success && onRefreshData) onRefreshData();
+      } catch { /* sync failed — will retry on next online event */ }
       setIsSyncing(false);
-      if (success && onRefreshData) {
-        onRefreshData();
-      }
     }
   };
 
   const handleManualSync = async () => {
     if (!isOnline) return;
     setIsSyncing(true);
-    const success = await offlineQueue.syncWithServer();
+    try {
+      const success = await offlineQueue.syncWithServer();
+      if (success && onRefreshData) onRefreshData();
+    } catch { /* sync failed */ }
     setIsSyncing(false);
-    if (success && onRefreshData) {
-      onRefreshData();
-    }
   };
 
   return (

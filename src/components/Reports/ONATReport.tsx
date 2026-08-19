@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Download, Table, Calculator, FileSpreadsheet, FileText, Calendar, RefreshCw } from "lucide-react";
 import ExcelJS from "exceljs";
 import { jsPDF } from "jspdf";
@@ -27,25 +27,30 @@ export default function ONATReport() {
   const [year, setYear] = useState<number>(new Date().getFullYear());
   const [loading, setLoading] = useState<boolean>(false);
   const [report, setReport] = useState<ONATReportData | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
-  const fetchReport = async () => {
+  const fetchReport = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/reportes/onat?month=${month}&year=${year}`);
+      const res = await fetch(`/api/reportes/onat?month=${month}&year=${year}`, { signal });
       if (res.ok) {
         const data = await res.json();
-        setReport(data);
+        if (!signal?.aborted) setReport(data);
       }
-    } catch (err) {
-      console.error("Error loading ONAT report:", err);
+    } catch (err: any) {
+      if (err?.name !== "AbortError") console.error("Error loading ONAT report:", err);
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
-  };
+  }, [month, year]);
 
   useEffect(() => {
-    fetchReport();
-  }, [month, year]);
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    fetchReport(ctrl.signal);
+    return () => ctrl.abort();
+  }, [fetchReport]);
 
   // Calculations
   const totalIngreso = report?.lines.reduce((sum, l) => sum + l.ingreso, 0) || 0;
@@ -247,7 +252,7 @@ export default function ONATReport() {
           </div>
 
           <button
-            onClick={fetchReport}
+            onClick={() => fetchReport()}
             disabled={loading}
             className="p-2 bg-slate-800 text-blue-400 border border-slate-700 rounded-xl hover:bg-slate-700 transition-colors cursor-pointer"
             title="Recargar reporte"
