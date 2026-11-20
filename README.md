@@ -1,61 +1,84 @@
 <div align="center">
-<h1>Nimbo ERP</h1>
-<p>Sistema de gestión empresarial completo para la nube — Punto de Venta, Inventario, Contabilidad, RRHH y más, orientado a negocios cubanos.</p>
+
+# Nimbo ERP
+
+**Sistema de gestión empresarial full-stack para la nube** — Punto de venta, inventario, compras, producción, contabilidad y RRHH, orientado a PYMES cubanas.
+
+[![CI](https://github.com/JordanBV1/nimbo-erp/actions/workflows/ci.yml/badge.svg)](https://github.com/JordanBV1/nimbo-erp/actions/workflows/ci.yml)
+[![Licencia](https://img.shields.io/badge/licencia-Apache%202.0-blue.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%E2%89%A520-brightgreen.svg)](https://nodejs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178c6.svg)](https://www.typescriptlang.org)
+
 </div>
 
 ## Descripción
 
-Nimbo ERP es una aplicación full-stack (React + Express + SQLite) para administrar un negocio completo: ventas en el punto de venta, inventario y stock, pedidos, compras a proveedores, clientes, producción, contabilidad, recursos humanos, reportes y suscripción del servicio.
+Nimbo ERP es una aplicación full-stack (React + Express + PostgreSQL) para administrar un negocio completo desde el navegador: ventas en el punto de venta, inventario y stock multi-almacén, pedidos y delivery, compras a proveedores, clientes con crédito y fidelidad, producción por recetas, contabilidad de doble entrada, recursos humanos, reportes fiscales y suscripción mensual del servicio.
 
-Incluye **registro de clientes por suscripción mensual** (pago vía Transfermóvil/EnZona con **confirmación manual por el administrador**), precios dinámicos según cantidad de locales, onboarding guiado, centro de ayuda con tickets, exportación de datos (CSV/JSON) y recibo de pago en PDF.
+Incluye registro de organizaciones con prueba gratuita, onboarding guiado, aislamiento multi-tenant, auditoría de acciones, exportación de datos (CSV/JSON), centro de ayuda con tickets y recibo de pago en PDF.
 
 ## Funcionalidades
 
-- **Dashboard** con métricas y estado de la suscripción
-- **Punto de Venta (POS)** con múltiples formas de pago
-- **Catálogo / Productos** con variantes, impuestos, precios CUP/USD
-- **Inventario / Stock** multi-almacén, movimientos y transferencias
-- **Pedidos / Delivery**
-- **Compras / Proveedores** (órdenes de compra, facturas de proveedor)
-- **Clientes** con cuentas por cobrar y puntos de fidelidad
-- **Producción** (recetas, órdenes de producción)
-- **Contabilidad** (cuentas, asientos, transacciones de caja)
-- **Recursos Humanos** (empleados)
-- **Reportes / ONAT**
-- **Suscripción mensual** con pago por Transfermóvil/EnZona, confirmación manual por el admin y recibo PDF
-- **Perfil de usuario** auto-servicio (cambio de nombre, correo y contraseña)
-- **Onboarding guiado** para nuevos usuarios
-- **Centro de ayuda** con soporte por WhatsApp y tickets
-- **Exportación de datos** CSV/JSON desde Configuración
-- **Página pública de precios** con registro directo
-- **Términos y condiciones** y **política de privacidad**
+- **Dashboard** con métricas del negocio y estado de la suscripción
+- **Punto de venta (POS)** con múltiples formas de pago, cierre de caja y QR de Transfermóvil
+- **Catálogo** de productos con variantes, impuestos y precios en CUP/USD
+- **Inventario** multi-almacén con mínimos, transferencias y trazabilidad de movimientos
+- **Pedidos y delivery** con estados y anticipos
+- **Compras y proveedores** con órdenes, recepción de mercancía y facturas
+- **Clientes** con cuentas por cobrar, crédito y puntos de fidelidad
+- **Producción** con recetas, consumo de ingredientes y producto terminado
+- **Contabilidad** de doble entrada, movimientos de caja y reporte fiscal ONAT
+- **Recursos humanos** con empleados, asistencia y nóminas
+- **Suscripción mensual** con pago por Transfermóvil/EnZona, confirmación por el administrador y recibo PDF
+- **Multi-tenant** con roles por sucursal y organización
+- **Cola offline** que sincroniza ventas al recuperar la conexión
+- **Auditoría**, onboarding, centro de ayuda, exportación de datos y páginas legales
 
 ## Stack
 
 | Capa | Tecnología |
 | --- | --- |
-| Frontend | React 19, Tailwind CSS 4, Vite, Recharts, jsPDF, lucide-react |
-| Backend | Node.js, Express 4, TypeScript |
-| Base de datos | PostgreSQL en Supabase (SQLite solo para desarrollo/fallback) |
-| Auth | JWT (jsonwebtoken) + bcrypt |
-| Email | Gmail API / EmailJS / SMTP (fallback: enlace de recuperación en pantalla) |
-| IA | Google Gemini (via @google/genai) |
+| Frontend | React 19, TypeScript 5.8, Tailwind CSS 4, Vite 6, Recharts, jsPDF |
+| Backend | Node.js 20+, Express 4, TypeScript, Zod |
+| Base de datos | PostgreSQL en Supabase (SQLite con `better-sqlite3` en desarrollo) |
+| Autenticación | JWT HS256 + bcrypt |
+| Correo | Gmail API / EmailJS / SMTP |
+| IA | Google Gemini (`@google/genai`) |
+| Observabilidad | pino + pino-http |
 | Testing | Vitest + Supertest |
-| Deploy | Render (`node dist/server.cjs`) |
+| CI/CD | GitHub Actions + Render (`render.yaml`, Dockerfile) |
+
+## Arquitectura
+
+Un monolito modular: un único servidor Express sirve la API REST (66 endpoints) y la SPA compilada. La capa de datos es intercambiable — PostgreSQL cuando existe `DATABASE_URL`, SQLite en caso contrario — detrás de una interfaz común.
+
+```mermaid
+flowchart LR
+  UI["SPA React"] -->|JSON /api| API["Express<br/>JWT · Zod · rate limit"]
+  API --> DB["Capa de datos"]
+  DB -->|DATABASE_URL| PG[("PostgreSQL")]
+  DB -->|fallback| SQL[("SQLite")]
+  API --> MAIL["Correo"]
+  API --> AI["Gemini"]
+```
+
+El detalle completo (diagramas de secuencia, modelo de datos, multi-tenancy y decisiones de diseño) está en **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 
 ## Requisitos
 
-- Node.js 20+
-- npm
+- Node.js 20 o superior
+- npm 10 o superior
 
 ## Instalación
 
 ```bash
-npm install
+git clone https://github.com/JordanBV1/nimbo-erp.git
+cd nimbo-erp
+npm ci
 cp .env.example .env
 ```
 
-Configura `.env` (ver sección *Variables de entorno*).
+Configura `.env` (ver [Variables de entorno](#variables-de-entorno)).
 
 ## Ejecutar en desarrollo
 
@@ -63,90 +86,118 @@ Configura `.env` (ver sección *Variables de entorno*).
 npm run dev
 ```
 
-Arranca el servidor Express con middleware de Vite integrado (TSX para TypeScript). La base de datos se crea y siembra automáticamente en `db-data/nimbo.db` la primera vez.
+Arranca Express con Vite integrado en `http://localhost:3000`. Sin `DATABASE_URL`, se crea y siembra automáticamente `db-data/nimbo.db` la primera vez.
 
-## Probar
+## Pruebas
 
 ```bash
 npm test
 ```
 
-Los tests usan Supertest sobre la app exportada (sin levantar puerto) y una base de datos temporal aislada (`db-data/nimbo-test.db`), que se elimina al terminar.
+Vitest ejecuta la API con Supertest sobre una base temporal aislada (`db-data/nimbo-test.db`), que se elimina al terminar. La integración continua ejecuta tipos, tests y build en cada push y pull request.
 
 ## Build y producción
 
 ```bash
-npm run build   # lint (tsc) + vite build + esbuild bundle del servidor
+npm run build   # tsc --noEmit + vite build + bundle del servidor
 npm start       # node dist/server.cjs
 ```
 
-El servidor sirve el frontend compilado (`dist/`) en producción y crea respaldos automáticos diarios de la base de datos en `db-data/backups/`.
+El servidor sirve el frontend compilado y crea respaldos automáticos diarios en `db-data/backups/` (retención de 7 copias).
 
 ## Variables de entorno
 
-Ver `.env.example`. Todas son opcionales en desarrollo salvo `JWT_SECRET` en producción (el servidor no arranca sin ella).
+Ver [`.env.example`](.env.example). En desarrollo todas son opcionales; en producción `JWT_SECRET` y `APP_URL` son obligatorias (el servidor no arranca sin ellas).
 
 | Variable | Descripción | Obligatoria |
 | --- | --- | --- |
 | `NODE_ENV` | `development` o `production` | Sí (prod) |
-| `PORT` | Puerto del servidor (default `3000`) | No |
+| `PORT` | Puerto del servidor (por defecto `3000`) | No |
 | `JWT_SECRET` | Clave para firmar tokens JWT | Sí (prod) |
+| `APP_URL` | URL pública (CORS, CSP, enlaces de correo) | Sí (prod) |
 | `DATABASE_URL` | Cadena de conexión PostgreSQL (Supabase) | No (usa SQLite si falta) |
-| `GEMINI_API_KEY` | API key de Google Gemini (asistente IA) | No |
-| `APP_URL` | URL pública (CORS, enlaces de email, paywall) | Sí (prod) |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `SMTP_SECURE` | SMTP para emails | No (ver Email) |
-| `GMAIL_USER`, `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` | Gmail API por HTTPS (gratis, funciona en Render free) | No |
-| `EMAILJS_SERVICE_ID`, `EMAILJS_TEMPLATE_ID`, `EMAILJS_PUBLIC_KEY` | EmailJS (gratis, sin SMTP) | No |
-| `TRIAL_DAYS` | Días de prueba gratis para organizaciones nuevas (default `7`) | No |
+| `TRIAL_DAYS` | Días de prueba para organizaciones nuevas | No |
+| `GEMINI_API_KEY` | Clave de Google Gemini (asistente IA) | No |
+| `SMTP_*` | Envío por SMTP | No |
+| `GMAIL_*` | Envío por Gmail API (HTTPS 443) | No |
+| `EMAILJS_*` | Envío por EmailJS (sin SMTP) | No |
 
-### Email
+### Correo
 
-Prioridad de transporte: `GMAIL_*` → `EMAILJS_*` → `SMTP_*`. En el plan free de Render los puertos SMTP (25/465/587) están bloqueados, por eso se recomienda Gmail API o EmailJS (HTTPS 443). Si no hay ningún transporte configurado, los correos no se envían y la app **muestra el enlace de recuperación en pantalla** para poder reenviarlo por WhatsApp.
+Prioridad de transporte: `GMAIL_*` → `EMAILJS_*` → `SMTP_*`. En el plan gratuito de Render los puertos SMTP están bloqueados, por eso se recomienda Gmail API o EmailJS. Si no hay transporte configurado, la app muestra el enlace de recuperación en pantalla para reenviarlo manualmente.
 
-### Configuración de negocio (en la app, módulo Configuración)
+### Configuración de negocio
 
-- Nombre del negocio (`business_name`)
-- Precio base y precio por local de la suscripción
-- Teléfono de Transfermóvil (`transfermovil_phone`)
-- Correo de soporte (`support_email`)
-- Datos fiscales para reportes ONAT
+Desde el módulo Configuración: nombre del negocio, precio base y por local de la suscripción, teléfono de Transfermóvil, correo de soporte y datos fiscales para ONAT.
 
 ## Credenciales demo
 
-En una base recién sembrada (primer arranque, p. ej. en desarrollo) se crean usuarios de ejemplo con contraseña `123456`:
+En una base recién sembrada (primer arranque en desarrollo) se crean usuarios de ejemplo con contraseña `123456`:
 
-- `admin@bakery.com` — Administrador Panadería
-- `admin@ropa.com` — Administrador Tienda de Ropa
-- `cajero@ropa.com` — Cajero
+| Correo | Rol |
+| --- | --- |
+| `admin@nimbo.com` | SUPER_ADMIN (operador de plataforma) |
+| `admin@bakery.com` | ADMIN de panadería |
+| `admin@ropa.com` | GERENTE de tienda de ropa |
+| `cajero@ropa.com` | CAJERO |
 
-> **En producción la base se limpia al lanzar**: solo existe la cuenta de propietario (`nimboerp@gmail.com`, rol `SUPER_ADMIN`, contraseña temporal que debes cambiar desde **Perfil** en el primer acceso). No quedan usuarios demo públicos.
+> En producción la base se limpia al lanzar: solo queda la cuenta de propietario con rol `SUPER_ADMIN` y contraseña temporal que debe cambiarse en el primer acceso.
 
 ## Despliegue en Render
 
-El repositorio incluye `render.yaml` (blueprint). Un commit a `master` dispara deploy automático:
+El repositorio incluye un blueprint (`render.yaml`). Un push a `master` dispara el despliegue:
 
-- Build: `npm ci && npm run build`
-- Start: `node dist/server.cjs`
-- Variables: `NODE_ENV=production`, `APP_URL`, `JWT_SECRET` (autogenerada), `PORT=10000`, `TRIAL_DAYS`. La `DATABASE_URL` está marcada con `sync: false` en el blueprint: **se configura desde el dashboard de Render** para no exponer credenciales en el repositorio.
-- Base de datos: **PostgreSQL en Supabase** (el plan free de Render no tiene disco persistente; con Supabase los datos sobreviven a cada deploy)
+- **Build**: `npm ci && npm run build`
+- **Start**: `node dist/server.cjs`
+- **Variables**: `NODE_ENV=production`, `APP_URL`, `JWT_SECRET` (autogenerada), `PORT=10000`, `TRIAL_DAYS`
+- **Base de datos**: PostgreSQL en Supabase. La `DATABASE_URL` se configura desde el panel de Render (`sync: false`) para no exponer credenciales en el repositorio.
 
 ### Confirmación de pagos
 
-Los clientes reportan su pago de suscripción y este queda en estado **pendiente**. El administrador (`SUPER_ADMIN`) lo confirma o rechaza desde el panel "Pagos Pendientes de Confirmación" en la sección Suscripción. Solo al confirmarlo se activa/renueva la suscripción por 30 días.
+El cliente reporta su pago y queda **pendiente**. Un `SUPER_ADMIN` lo confirma o rechaza desde **Suscripción → Pagos pendientes**. Solo al confirmarlo se activa o renueva la suscripción por 30 días.
 
-## Estructura
+## Documentación
+
+| Documento | Contenido |
+| --- | --- |
+| [Arquitectura](docs/ARCHITECTURE.md) | Componentes, flujos, modelo de datos, seguridad |
+| [Referencia de API](docs/API.md) | Los 66 endpoints con accesos y ejemplos |
+| [Manual técnico](docs/MANUAL_TECNICO.md) | Instalación, variables, despliegue, respaldos |
+| [Manual de usuario](docs/MANUAL_USUARIO.md) | Guía funcional por módulo |
+| [ADRs](docs/adr/) | Decisiones de arquitectura |
+| [Changelog](CHANGELOG.md) | Historial de versiones |
+
+## Estructura del proyecto
 
 ```
-server.ts                    # API Express (auth, suscripción, soporte, schedulers)
+server.ts                 # Express: middleware, 66 rutas, auth, validación
 src/
-  components/                # UI React (layout, landing, Settings, modales)
-  db/db.ts                   # SQLite: esquema, seed y API de datos
-  db/backup.ts               # Respaldo automático diario
-  mailer.ts                  # Envío de emails (Gmail API / EmailJS / SMTP)
-  types.ts                   # Tipos de dominio (roles, monedas, negocios)
-tests/                       # Vitest + Supertest
+  App.tsx                 # Composición de la SPA
+  components/             # Vistas por módulo (POS, inventario, landing, ...)
+  db/
+    db.ts                 # Interfaz de datos + implementación SQLite
+    pg-db.ts              # Implementación PostgreSQL
+    pg.ts                 # Pool y traducción de SQL
+    backup.ts             # Respaldos automáticos
+  mailer.ts               # Gmail API / EmailJS / SMTP
+  logger.ts               # pino + pino-http
+  types.ts                # Roles, monedas y tipos de dominio
+  utils/offlineQueue.ts   # Cola offline del navegador
+tests/                    # Vitest + Supertest
+docs/                     # Arquitectura, API, manuales y ADRs
+.github/workflows/ci.yml  # Integración continua
+Dockerfile                # Imagen multi-etapa
+render.yaml               # Blueprint de despliegue
 ```
+
+## Seguridad
+
+- Cabeceras con `helmet` y CSP; CORS restringido a `APP_URL` en producción.
+- Rate limiting: 20 intentos/15 min en autenticación y 200 req/min en la API.
+- Contraseñas con bcrypt (10 rondas); token JWT de 24 h guardado en memoria.
+- Toda consulta de negocio filtra por `organization_id` derivado del token.
+- Validación de entrada con Zod y registro de auditoría en acciones sensibles.
 
 ## Licencia
 
-Uso privado. Contacto: `soporte@nimboerp.cu`
+Distribuido bajo la licencia **Apache 2.0**. Consulta [LICENSE](LICENSE).
