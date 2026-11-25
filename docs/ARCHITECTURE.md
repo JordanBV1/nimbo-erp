@@ -7,29 +7,31 @@ Este documento describe la arquitectura técnica del sistema: componentes, flujo
 Nimbo ERP es una aplicación **monolítica modular full-stack**: un único servidor Express sirve la API REST y, en producción, también los assets estáticos generados por Vite. El frontend es una SPA en React que consume la API bajo `/api`.
 
 ```mermaid
-C4Context
-  title Contexto del sistema
+flowchart LR
+  subgraph Personas["Usuarios"]
+    admin["Administrador<br/>organización, usuarios y suscripción"]
+    cajero["Cajero<br/>punto de venta"]
+    contable["Contable<br/>asientos y reportes fiscales"]
+    superAdmin["Super Admin<br/>confirma pagos"]
+  end
 
-  Person(admin, "Administrador", "Gestiona la organización, usuarios y suscripción")
-  Person(cajero, "Cajero", "Opera el punto de venta")
-  Person(contable, "Contable", "Registra asientos y reportes fiscales")
-  Person(superAdmin, "Super Admin", "Operador de la plataforma; confirma pagos")
+  nimbo["Nimbo ERP<br/>Gestión comercial, inventario,<br/>contabilidad y RRHH"]
 
-  System(nimbo, "Nimbo ERP", "Gestión comercial, inventario, contabilidad y RRHH")
+  subgraph Ext["Servicios externos"]
+    pg[("PostgreSQL<br/>Supabase")]
+    email["Gmail API / SMTP<br/>correo transaccional"]
+    gemini["Google Gemini<br/>asistente inteligente"]
+    pay["Transfermóvil / EnZona<br/>pagos manuales"]
+  end
 
-  System_Ext(pg, "PostgreSQL (Supabase)", "Base de datos de producción")
-  System_Ext(email, "Gmail API / SMTP", "Correo transaccional")
-  System_Ext(gemini, "Google Gemini", "Asistente inteligente")
-  System_Ext(pay, "Transfermóvil / EnZona", "Pagos manuales de suscripción")
-
-  Rel(admin, nimbo, "Usa")
-  Rel(cajero, nimbo, "Usa")
-  Rel(contable, nimbo, "Usa")
-  Rel(superAdmin, nimbo, "Confirma pagos")
-  Rel(nimbo, pg, "SQL sobre TLS")
-  Rel(nimbo, email, "HTTPS / SMTP")
-  Rel(nimbo, gemini, "SDK HTTPS")
-  Rel(pay, admin, "Transferencia fuera de banda")
+  admin --> nimbo
+  cajero --> nimbo
+  contable --> nimbo
+  superAdmin -->|confirma pagos| nimbo
+  nimbo -->|SQL sobre TLS| pg
+  nimbo -->|HTTPS / SMTP| email
+  nimbo -->|SDK HTTPS| gemini
+  pay -.->|transferencia fuera de banda| admin
 ```
 
 ## 2. Contenedores y capas
